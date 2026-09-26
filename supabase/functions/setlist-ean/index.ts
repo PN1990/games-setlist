@@ -1,5 +1,5 @@
 // Setlist — descobrir o jogo a partir do código de barras (EAN/UPC) da caixa.
-// Fontes: cache própria (setlist_ean) → UPCitemdb (trial) → Open Products Facts.
+// Fontes: CeX Portugal/UK (nome + preços de usados) → cache própria (setlist_ean) → UPCitemdb (trial) → Open Products Facts.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const CORS = {
@@ -53,6 +53,28 @@ function cleanTitle(t: string): string {
   return s || t.trim();
 }
 
+type Cex = { name: string; category: string; sell: number | null; exchange: number | null; cash: number | null; currency: string; image: string | null; url: string };
+
+// A CeX usa o código de barras como identificador dos jogos
+async function lookupCex(ean: string): Promise<Cex | null> {
+  for (const [cc, currency, site] of [['pt', 'EUR', 'pt.webuy.com'], ['uk', 'GBP', 'uk.webuy.com']]) {
+    try {
+      const r = await fetch(`https://wss2.cex.${cc}.webuy.io/v3/boxes/${ean}/detail`, { headers: { Accept: 'application/json' } });
+      if (!r.ok) continue;
+      const j = await r.json();
+      const b = j.response?.data?.boxDetails?.[0];
+      if (!b?.boxName) continue;
+      return {
+        name: b.boxName, category: b.categoryName || '',
+        sell: b.sellPrice ?? null, exchange: b.exchangePrice ?? null, cash: b.cashPrice ?? null,
+        currency, image: b.imageUrls?.large ? encodeURI(b.imageUrls.large) : null,
+        url: `https://${site}/product-detail?id=${ean}`
+      };
+    } catch (e) { console.warn('cex', cc, e); }
+  }
+  return null;
+}
+
 async function lookupUpcItemDb(ean: string): Promise<string | null> {
   const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${ean}`);
   if (!r.ok) return null;
@@ -90,8 +112,17 @@ Deno.serve(async req => {
       return json({ ean, saved: true });
     }
 
-    const { data: cached } = await admin.from('setlist_ean').select('*').eq('ean', ean).maybeSingle();
-    if (cached?.title) return json({ ean, title: cached.title, platform: cached.platform, raw: cached.raw_title, source: cached.source, cached: true });
+    const [cex, cachedRes] = await Promise.all([lookupCex(ean), admin.from('setlist_ean').select('*').eq('ean', ean).maybeSingle()]);
+    const cached = cachedRes.data;
+    // Um nome corrigido pelo utilizador tem prioridade; os preços da CeX são sempre os de agora
+    if (cached?.title && (cached.source === 'user' || !cex)) {
+      return json({ ean, title: cached.title, platform: cached.platform, raw: cached.raw_title, source: cached.source, cached: true, cex, image: cex?.image || null });
+    }
+    if (cex) {
+      const result = { ean, title: cleanTitle(cex.name), platform: detectPlatform(cex.category) || detectPlatform(cex.name), raw: `${cex.name} (${cex.category})`, source: 'cex', cex, image: cex.image };
+      await admin.from('setlist_ean').upsert({ ean, title: result.title, platform: result.platform, raw_title: result.raw, source: 'cex', updated_at: new Date().toISOString() });
+      return json(result);
+    }
 
     let raw: string | null = null, source = '';
     try { raw = await lookupUpcItemDb(ean); if (raw) source = 'upcitemdb'; } catch (e) { console.warn('upcitemdb', e); }

@@ -972,6 +972,8 @@ let currentDetailId = null;
 
 function openDetail(id) {
   currentDetailId = id;
+  const g0 = getGame(id);
+  if (g0?.ean && (!g0.cex?.checkedAt || Date.now() - Date.parse(g0.cex.checkedAt) > 86400000)) refreshCex(g0);
   sheet.open(detailHTML(getGame(id)), () => { currentDetailId = null; render(); });
 }
 
@@ -1041,6 +1043,8 @@ function detailHTML(g) {
 
     ${isWish ? eshopHTML(g) : ''}
 
+    ${cexHTML(g)}
+
     <div class="group-title">Duração · HowLongToBeat</div>
     ${hasHltb ? `<div class="hltb">
       <div class="box"><div class="v">${fmtHours(g.hltb.main)}</div><div class="l">Principal</div></div>
@@ -1073,6 +1077,21 @@ function detailHTML(g) {
       <button class="link-row danger" data-action="delete"><span>Apagar jogo</span></button>
     </div>
   </div>`;
+}
+
+function cexHTML(g) {
+  const c = g.cex;
+  if (!c || (c.sell == null && c.exchange == null)) return '';
+  const m = v => v == null ? '—' : v.toLocaleString('pt-PT', { style: 'currency', currency: c.currency || 'EUR' });
+  return `<div class="group-title">CeX · usados${c.currency === 'GBP' ? ' (Reino Unido)' : ''}</div>
+    <div class="hltb">
+      <div class="box"><div class="v" style="color:var(--text)">${m(c.sell)}</div><div class="l">Preço à venda</div></div>
+      <div class="box"><div class="v" style="color:var(--ok)">${m(c.exchange)}</div><div class="l">Retoma (vale)</div></div>
+      <div class="box"><div class="v" style="color:var(--text-2)">${m(c.cash)}</div><div class="l">Retoma (dinheiro)</div></div>
+    </div>
+    <div class="card-list" style="margin-top:8px">
+      ${c.url ? `<a class="link-row" href="${esc(c.url)}" target="_blank" rel="noopener"><span>Ver na CeX</span><span class="d">${c.checkedAt ? timeAgo(c.checkedAt) : ''}</span></a>` : ''}
+    </div>`;
 }
 
 function eshopHTML(g) {
@@ -1648,6 +1667,10 @@ async function handleEan(code) {
     }
     if (best && bestScore >= 0.75 && confirm(`Encontrei “${best.title}” (${PLATFORMS[best.platform]?.name}) na tua ${best.list === 'wishlist' ? 'wishlist' : 'coleção'}. É este jogo?`)) {
       best.ean = code;
+      if (best.list === 'collection' && !best.physical && confirm('Tens este jogo só em digital. Marcar que também o tens em físico?')) best.physical = true;
+      const cex = cexFrom(info);
+      if (cex) best.cex = cex;
+      if (info.image && !best.cover) best.cover = info.image;
       await saveGame(best);
       showOwned(best);
       return;
@@ -1660,15 +1683,37 @@ async function handleEan(code) {
     title: info?.title || '',
     platform: info?.platform || g.platform,
     physical: true, digital: false,
+    cover: info?.image || '', cex: cexFrom(info),
     ean: code, eanTitle: info?.title || null, eanPlatform: info?.platform || null
   });
   openEditor(g, { isNew: true, noFocus: !!info?.title });
   if (info?.title) {
-    toast(`📦 ${info.title}`, 2500);
+    toast(`📦 ${info.title}${info.cex?.sell != null ? ` · CeX ${fmtMoney(info.cex.sell)}` : ''}`, 3000);
     searchInfo();
   } else {
     toast(Cloud.loggedIn ? 'Não encontrei este código — escreve o nome do jogo' : 'Entra na conta para identificar códigos automaticamente', 3500);
   }
+}
+
+function cexFrom(info) {
+  const c = info?.cex;
+  return c ? { sell: c.sell, exchange: c.exchange, cash: c.cash, currency: c.currency, url: c.url, checkedAt: new Date().toISOString() } : null;
+}
+
+// Atualiza em segundo plano os preços da CeX de um jogo com EAN
+async function refreshCex(g) {
+  if (!g?.ean || !Cloud.loggedIn || !navigator.onLine) return;
+  try {
+    const info = await Cloud.lookupEan(g.ean);
+    const fresh = getGame(g.id);
+    if (!fresh) return;
+    const cex = cexFrom(info);
+    if (!cex && !(info?.image && !fresh.cover)) return;
+    if (cex) fresh.cex = cex;
+    if (info?.image && !fresh.cover) fresh.cover = info.image;
+    await saveGame(fresh);
+    if (currentDetailId === fresh.id && !draft) refreshDetail();
+  } catch { /* ignorar */ }
 }
 
 function showOwned(g) {
