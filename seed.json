@@ -1,0 +1,863 @@
+{
+ "version": 1,
+ "games": [
+  {
+   "title": "Bravely Default: Flying Fairy HD Remaster",
+   "platform": "switch2",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Captain Toad: Treasure Tracker",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Donkey Kong Bananza",
+   "platform": "switch2",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Dragon Quest I & II HD-2D Remake",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Fantasy Life i: The Girl Who Steals Time",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Final Fantasy Tactics: The Ivalice Chronicles",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Fire Emblem: Fortune's Weave",
+   "platform": "switch2",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Fire Emblem Warriors: Three Hopes",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Hyrule Warriors: Age of Imprisonment",
+   "platform": "switch2",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Kirby Air Riders",
+   "platform": "switch2",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Kirby's Return to Dream Land Deluxe",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Lego Horizon Adventures",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Luigi's Mansion 3",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Mario & Luigi: Brothership",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Mario Party Superstars",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Metroid Prime 4: Beyond",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Octopath Traveler 0",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Pokémon Legends: Arceus",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Pokémon Pokopia",
+   "platform": "switch2",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Pokémon Scarlet",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Pokémon Legends: Z-A",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Princess Peach: Showtime!",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Sonic Colors: Ultimate",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Sonic Frontiers",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Sonic Mania",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Sonic X Shadow Generations",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Splatoon 3",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Splatoon Raiders",
+   "platform": "switch2",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Star Wars Outlaws",
+   "platform": "switch2",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Story of Seasons: Grand Bazaar",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Suikoden I & II HD Remaster",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Super Mario 3D All-Stars",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Super Mario Party Jamboree",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Super Mario RPG",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Super Mario Bros. Wonder",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Tales of Eternia Remastered",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Tales of Xillia Remastered",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "The Legend of Heroes: Trails from Zero / Trails to Azure Deluxe Edition",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "The Legend of Heroes: Trails Beyond the Horizon",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "The Legend of Zelda: Tears of the Kingdom",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Xenoblade Chronicles: Definitive Edition",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Xenoblade Chronicles 2",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Xenoblade Chronicles 3",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Xenoblade Chronicles X: Definitive Edition",
+   "platform": "switch",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Animal Crossing: New Horizons",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Apollo Justice: Ace Attorney Trilogy",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Assassin's Creed: The Rebel Collection",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Assassin's Creed Shadows",
+   "platform": "switch2",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Baten Kaitos I & II HD Remaster",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Cat Quest",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Cat Quest II",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Cat Quest III",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Crown Trick",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Diablo III: Eternal Collection",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Dragon Quest III HD-2D Remake",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Dragon Quest XI S: Echoes of an Elusive Age",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Dragon's Dogma: Dark Arisen",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Fantasian Neo Dimension",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Final Fantasy X/X-2 HD Remaster",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Final Fantasy XII: The Zodiac Age",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Inazuma Eleven: Victory Road",
+   "platform": "switch2",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Lego City Undercover",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Lego Harry Potter Collection",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Lego Jurassic World",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Lego Marvel Super Heroes 2",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Lego Star Wars: The Skywalker Saga",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Mario + Rabbids Kingdom Battle",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Mario Kart World",
+   "platform": "switch2",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Monster Hunter Rise",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Monster Hunter Stories",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Monster Hunter Stories 2: Wings of Ruin",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Ni no Kuni: Wrath of the White Witch",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Ni no Kuni II: Revenant Kingdom",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Octopath Traveler",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Octopath Traveler II",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Persona 3 Portable",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Persona 4 Golden",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Persona 5 Royal",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Phoenix Wright: Ace Attorney Trilogy",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Pokémon Sword",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Red Dead Redemption",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Romancing SaGa: Minstrel Song Remastered",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Romancing SaGa 2: Revenge of the Seven",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Splatoon 2",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Sword Art Online: Fatal Bullet Complete Edition",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Sword Art Online: Hollow Realization Deluxe Edition",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Tactics Ogre: Reborn",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Tales of Graces f Remastered",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Tales of Vesperia: Definitive Edition",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "The Elder Scrolls V: Skyrim Anniversary Edition",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "The Witcher 3: Wild Hunt Complete Edition",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "The Legend of Heroes: Trails of Cold Steel III",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "The Legend of Heroes: Trails of Cold Steel IV",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "The Legend of Zelda: Breath of the Wild",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Trails in the Sky 1st Chapter",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Triangle Strategy",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Valkyria Chronicles",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Valkyria Chronicles 4",
+   "platform": "switch",
+   "physical": false,
+   "digital": true
+  },
+  {
+   "title": "Bravely Default",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Bravely Second: End Layer",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Castlevania: Lords of Shadow – Mirror of Fate",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Culdcept Revolt",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Detective Pikachu",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Dragon Quest VII: Fragments of the Forgotten Past",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Dragon Quest VIII: Journey of the Cursed King",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Ever Oasis",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Etrian Odyssey IV: Legends of the Titan",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Etrian Odyssey V: Beyond the Myth",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Fantasy Life",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Fire Emblem Awakening",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Fire Emblem Echoes: Shadows of Valentia",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Fire Emblem Fates: Birthright",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Fire Emblem Fates: Conquest",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Fire Emblem Warriors",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Hyrule Warriors Legends",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Kid Icarus: Uprising",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Kirby: Triple Deluxe",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Luigi's Mansion",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Monster Hunter 4 Ultimate",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Monster Hunter Generations",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Persona Q: Shadow of the Labyrinth",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Pokémon Alpha Sapphire",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Pokémon Ultra Moon",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Pokémon Ultra Sun",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Pokémon X",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Pokémon Y",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Layton's Mystery Journey: Katrielle and the Millionaires' Conspiracy",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Professor Layton vs. Phoenix Wright: Ace Attorney",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Professor Layton and the Miracle Mask",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Resident Evil: Revelations",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Star Fox 64 3D",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "New Super Mario Bros. 2",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Super Mario 3D Land",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Super Mario Maker for Nintendo 3DS",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Tales of the Abyss",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "The Legend of Legacy",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "The Legend of Zelda: A Link Between Worlds",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "The Legend of Zelda: Majora's Mask 3D",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "The Legend of Zelda: Ocarina of Time 3D",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "The Legend of Zelda: Tri Force Heroes",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Xenoblade Chronicles 3D",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "Yo-kai Watch",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  },
+  {
+   "title": "7th Dragon III Code: VFD",
+   "platform": "3ds",
+   "physical": true,
+   "digital": false
+  }
+ ]
+}

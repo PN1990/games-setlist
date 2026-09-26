@@ -49,8 +49,9 @@ const fmtMoney = v => v == null ? '—' : v.toLocaleString('pt-PT', { style: 'cu
 const fmtDate = d => { if (!d) return '—'; const x = new Date(d); return isNaN(x) ? d : x.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' }); };
 
 let toastTimer;
-function toast(msg, ms = 2200) {
+function toast(msg, ms = 2200, top = false) {
   const t = $('#toast');
+  t.classList.toggle('top', top);
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toastTimer);
@@ -174,14 +175,212 @@ async function saveGame(g) {
   const i = games.findIndex(x => x.id === g.id);
   if (i >= 0) games[i] = g; else games.push(g);
   await DB.put(g);
+  Sync.markDirty([g.id]);
+}
+
+async function saveMany(list) {
+  await DB.putMany(list);
+  for (const g of list) {
+    const i = games.findIndex(x => x.id === g.id);
+    if (i >= 0) games[i] = g; else games.push(g);
+  }
+  Sync.markDirty(list.map(g => g.id));
 }
 
 async function deleteGame(id) {
   games = games.filter(g => g.id !== id);
   await DB.del(id);
+  Sync.markDeleted([id]);
 }
 
 const getGame = id => games.find(g => g.id === id);
+
+/* ---------------- Sincronização com a nuvem ---------------- */
+
+const Sync = {
+  dirty: new Set(lsGet('sync:dirty', [])),
+  deleted: new Set(lsGet('sync:deleted', [])),
+  timer: null,
+  running: false,
+  again: false,
+  status: 'idle', // idle | syncing | error | offline
+  error: '',
+  lastSync: lsGet('sync:last', null),
+
+  persist() { lsSet('sync:dirty', [...this.dirty]); lsSet('sync:deleted', [...this.deleted]); },
+  markDirty(ids) { ids.forEach(id => { this.deleted.delete(id); this.dirty.add(id); }); this.persist(); this.schedule(); },
+  markDeleted(ids) { ids.forEach(id => { this.dirty.delete(id); this.deleted.add(id); }); this.persist(); this.schedule(); },
+  reset() { this.dirty.clear(); this.deleted.clear(); this.persist(); },
+
+  schedule(ms = 1500) {
+    if (!Cloud.loggedIn || this.timer) return;
+    this.timer = setTimeout(() => { this.timer = null; this.run(); }, ms);
+  },
+
+  async run() {
+    if (!Cloud.loggedIn) return;
+    if (this.running) { this.again = true; return; }
+    if (!navigator.onLine) { this.status = 'offline'; updateSyncUI(); return; }
+    this.running = true;
+    this.status = 'syncing';
+    updateSyncUI();
+    try {
+      await this.push();
+      const changed = await this.pull();
+      await loadPrices();
+      this.status = 'idle';
+      this.error = '';
+      this.lastSync = new Date().toISOString();
+      lsSet('sync:last', this.lastSync);
+      if (changed) refreshAfterSync();
+      maybeRefreshPrices();
+    } catch (err) {
+      console.warn('sync', err);
+      this.status = 'error';
+      this.error = err.message || String(err);
+      if (!Cloud.loggedIn) render();
+    }
+    this.running = false;
+    updateSyncUI();
+    if (this.again) { this.again = false; this.schedule(300); }
+  },
+
+  async push() {
+    const ids = [...this.dirty], dels = [...this.deleted];
+    if (!ids.length && !dels.length) return;
+    const snapshot = new Map();
+    const rows = [];
+    for (const id of ids) {
+      const g = getGame(id);
+      if (g) { snapshot.set(id, g.updatedAt); rows.push({ id, data: g, deleted: false }); }
+      else this.dirty.delete(id);
+    }
+    for (const id of dels) rows.push({ id, data: {}, deleted: true });
+    if (rows.length) await Cloud.pushGames(rows);
+    for (const id of ids) { const g = getGame(id); if (!g || g.updatedAt === snapshot.get(id)) this.dirty.delete(id); }
+    for (const id of dels) if (!getGame(id)) this.deleted.delete(id);
+    this.persist();
+  },
+
+  async pull() {
+    const key = 'sync:lastPull:' + Cloud.user?.id;
+    const last = lsGet(key, null);
+    // Margem de 10 s para não perder alterações gravadas ao mesmo tempo noutro dispositivo
+    const since = last ? new Date(Date.parse(last) - 10000).toISOString() : null;
+    const rows = await Cloud.pullGames(since);
+    let changed = false;
+    const puts = [];
+    for (const r of rows) {
+      const local = getGame(r.id);
+      if (r.deleted) {
+        if (local && !this.dirty.has(r.id)) {
+          games = games.filter(g => g.id !== r.id);
+          await DB.del(r.id);
+          changed = true;
+        }
+        continue;
+      }
+      const remote = r.data;
+      if (!remote || !remote.id || !remote.title) continue;
+      const rU = remote.updatedAt || '', lU = local?.updatedAt || '';
+      const take = !local || (this.dirty.has(r.id) ? rU > lU : rU !== lU);
+      if (take) {
+        const g = { ...blankGame(remote.list), ...remote, hltb: { main: null, extra: null, complete: null, ...(remote.hltb || {}) } };
+        const i = games.findIndex(x => x.id === g.id);
+        if (i >= 0) games[i] = g; else games.push(g);
+        puts.push(g);
+        this.dirty.delete(g.id);
+        changed = true;
+      }
+    }
+    if (puts.length) await DB.putMany(puts);
+    if (rows.length) lsSet(key, rows[rows.length - 1].updated_at);
+    this.persist();
+    return changed;
+  }
+};
+
+function refreshAfterSync() {
+  if (!sheet.isOpen) render();
+  else if (currentDetailId && !draft) {
+    if (getGame(currentDetailId)) refreshDetail(); else sheet.close();
+  }
+}
+
+function syncLabel() {
+  if (!Cloud.loggedIn) return '';
+  if (Sync.status === 'syncing') return 'A sincronizar…';
+  if (Sync.status === 'offline') return 'Offline — sincroniza quando voltares a ter rede';
+  if (Sync.status === 'error') return 'Erro ao sincronizar: ' + Sync.error;
+  if (Sync.dirty.size || Sync.deleted.size) return 'Alterações por enviar…';
+  return Sync.lastSync ? 'Sincronizado ' + timeAgo(Sync.lastSync) : 'Ainda não sincronizado';
+}
+
+function updateSyncUI() {
+  const el = document.getElementById('sync-status');
+  if (el) el.textContent = syncLabel();
+}
+
+function timeAgo(iso) {
+  const s = Math.round((Date.now() - Date.parse(iso)) / 1000);
+  if (s < 60) return 'agora mesmo';
+  if (s < 3600) return `há ${Math.round(s / 60)} min`;
+  if (s < 86400) return `há ${Math.round(s / 3600)} h`;
+  return `há ${Math.round(s / 86400)} dias`;
+}
+
+/* ---------------- Preços da eShop ---------------- */
+
+let prices = lsGet('prices', {});
+let lastPriceCall = 0;
+let priceRefreshRunning = false;
+
+async function loadPrices() {
+  if (!Cloud.loggedIn) return;
+  const rows = await Cloud.fetchPrices();
+  prices = {};
+  rows.forEach(r => { prices[r.game_id] = r; });
+  lsSet('prices', prices);
+}
+
+// Informação de preço válida para este jogo (só wishlist Switch/Switch 2)
+function priceOf(g) {
+  if (!g || g.list !== 'wishlist' || g.platform === '3ds') return null;
+  const p = prices[g.id];
+  if (!p || p.query_title !== g.title.trim() || p.platform !== g.platform) return null;
+  return p;
+}
+
+function needsPriceCheck(g) {
+  if (g.list !== 'wishlist' || g.platform === '3ds') return false;
+  const p = prices[g.id];
+  return !p || p.query_title !== g.title.trim() || p.platform !== g.platform;
+}
+
+// Pede ao servidor preços novos se houver jogos da wishlist ainda sem preço
+function maybeRefreshPrices() {
+  if (!Cloud.loggedIn || priceRefreshRunning || Date.now() - lastPriceCall < 60000) return;
+  if (games.some(needsPriceCheck)) refreshPricesNow(false);
+}
+
+async function refreshPricesNow(manual = true) {
+  if (!Cloud.loggedIn) { toast('Entra na tua conta para ver preços'); return; }
+  if (priceRefreshRunning) return;
+  priceRefreshRunning = true;
+  lastPriceCall = Date.now();
+  if (manual) toast('A procurar preços na eShop…', 20000);
+  try {
+    if (Sync.dirty.size || Sync.deleted.size) await Sync.push();
+    const r = await Cloud.refreshPrices();
+    await loadPrices();
+    refreshAfterSync();
+    if (manual) toast(r?.on_sale ? `Preços atualizados · ${r.on_sale} em promoção 🎉` : 'Preços atualizados');
+  } catch (err) {
+    if (manual) toast('Não foi possível atualizar os preços');
+    console.warn('prices', err);
+  }
+  priceRefreshRunning = false;
+}
 
 function formatLabel(g) {
   if (g.physical && g.digital) return 'Físico + Digital';
@@ -223,11 +422,16 @@ function formatPills(g) {
 
 /* ---------------- Render principal ---------------- */
 
+const showLogin = () => ui.tab === 'login' || (!Cloud.loggedIn && !lsGet('skipLogin', false));
+
 function render() {
+  const login = showLogin();
   document.querySelectorAll('#tabbar button').forEach(b => b.classList.toggle('active', b.dataset.tab === ui.tab));
-  $('#fab').hidden = !(ui.tab === 'collection' || ui.tab === 'wishlist');
+  $('#tabbar').hidden = login;
+  $('#fab').hidden = login || !(ui.tab === 'collection' || ui.tab === 'wishlist');
   const v = $('#view');
-  if (ui.tab === 'collection' || ui.tab === 'wishlist') v.innerHTML = renderListTab(ui.tab);
+  if (login) v.innerHTML = renderLogin();
+  else if (ui.tab === 'collection' || ui.tab === 'wishlist') v.innerHTML = renderListTab(ui.tab);
   else if (ui.tab === 'stats') v.innerHTML = renderStats();
   else v.innerHTML = renderMore();
 }
@@ -255,7 +459,8 @@ function filteredGames(list) {
     rating: (a, b) => (b.rating || 0) - (a.rating || 0) || byTitle(a, b),
     hltb: (a, b) => (a.hltb?.main ?? 9999) - (b.hltb?.main ?? 9999) || byTitle(a, b),
     priority: (a, b) => (a.priority || 2) - (b.priority || 2) || byTitle(a, b),
-    price: (a, b) => (a.price ?? 99999) - (b.price ?? 99999) || byTitle(a, b)
+    price: (a, b) => (priceOf(a)?.current_price ?? a.price ?? 99999) - (priceOf(b)?.current_price ?? b.price ?? 99999) || byTitle(a, b),
+    discount: (a, b) => (priceOf(b)?.discount_pct || 0) - (priceOf(a)?.discount_pct || 0) || byTitle(a, b)
   }[sort] || byTitle;
   return arr.sort(cmp);
 }
@@ -282,7 +487,7 @@ function renderListTab(list) {
   }
 
   const sortOpts = isWish
-    ? [['priority', 'Prioridade'], ['title', 'Título'], ['recent', 'Recentes'], ['price', 'Preço'], ['platform', 'Plataforma']]
+    ? [['priority', 'Prioridade'], ['title', 'Título'], ['recent', 'Recentes'], ['discount', 'Promoções'], ['price', 'Preço'], ['platform', 'Plataforma']]
     : [['title', 'Título'], ['recent', 'Recentes'], ['platform', 'Plataforma'], ['year', 'Ano'], ['rating', 'Avaliação'], ['hltb', 'Duração']];
   const curSort = isWish ? ui.wishSort : ui.sort;
 
@@ -329,7 +534,8 @@ function resultsHTML(list, all, arr) {
       <h3>${isWish ? 'A wishlist está vazia' : 'Ainda não tens jogos'}</h3>
       <div>${isWish ? 'Adiciona os jogos que queres comprar.' : 'Adiciona o primeiro jogo ou importa uma lista inteira de uma vez.'}</div>
       <button class="btn" data-action="new">Adicionar jogo</button>
-      ${isWish ? '' : '<br><button class="btn secondary" style="margin-top:10px" data-action="bulk">Importar lista</button>'}
+      ${isWish ? '' : `<br><button class="btn secondary" style="margin-top:10px" data-action="seed">Carregar a minha lista (${SEED_COUNT} jogos)</button>
+      <br><button class="btn ghost" style="margin-top:10px" data-action="bulk">Importar outra lista</button>`}
     </div>`;
   } else if (!arr.length) {
     body = `<div class="empty"><div class="big">🔍</div><h3>Nada encontrado</h3><div>Experimenta mudar os filtros.</div></div>`;
@@ -341,15 +547,30 @@ function resultsHTML(list, all, arr) {
   return body;
 }
 
+// Preço atual da eShop (ou preço alvo manual) para mostrar nas listas
+function priceTag(g) {
+  const p = priceOf(g);
+  if (p && p.current_price != null) {
+    const target = g.price != null && p.current_price <= g.price ? ' 🎯' : '';
+    return p.discount_pct
+      ? `<span class="sale">−${p.discount_pct}%</span> <b>${fmtMoney(p.current_price)}</b>${target}`
+      : `${fmtMoney(p.current_price)}${target}`;
+  }
+  return g.price != null ? `alvo ${fmtMoney(g.price)}` : '';
+}
+
 function cardHTML(g) {
   const st = STATUSES[g.status] || STATUSES.none;
-  const extra = g.list === 'wishlist' && g.price != null ? ` · ${fmtMoney(g.price)}` : '';
+  const tag = g.list === 'wishlist' ? priceTag(g) : '';
+  const extra = tag ? ` · ${tag}` : '';
+  const sale = priceOf(g)?.discount_pct;
   return `<button class="card" data-action="open" data-id="${g.id}">
     <div style="position:relative">
       ${coverHTML(g)}
       <div class="badges" style="position:absolute;left:5px;bottom:5px">${formatBadges(g)}</div>
       ${g.status && g.status !== 'none' && g.list === 'collection' ? `<span class="status-dot" style="position:absolute;right:6px;top:10px;background:${st.color}"></span>` : ''}
       ${g.favorite ? `<span class="fav" style="position:absolute;right:5px;bottom:5px">${ICON.star}</span>` : ''}
+      ${sale ? `<span class="sale-badge">−${sale}%</span>` : ''}
     </div>
     <div class="t">${esc(g.title)}</div>
     <div class="p">${esc(PLATFORMS[g.platform]?.name || '')}${extra}</div>
@@ -364,7 +585,8 @@ function rowHTML(g) {
   if (g.list === 'collection' && g.status && g.status !== 'none') meta += `<span style="color:${st.color};font-weight:600">● ${st.name}</span>`;
   if (g.list === 'wishlist') {
     meta += `<span>${PRIORITIES[g.priority || 2]}</span>`;
-    if (g.price != null) meta += `<span>${fmtMoney(g.price)}</span>`;
+    const tag = priceTag(g);
+    if (tag) meta += `<span>${tag}</span>`;
   }
   return `<button class="row" data-action="open" data-id="${g.id}">
     <div class="thumb"><div class="ph" style="background:${p.color}">${esc(g.title.charAt(0).toUpperCase())}</div>${img}</div>
@@ -385,7 +607,8 @@ function renderStats() {
   const dig = col.filter(g => g.digital).length;
   const both = col.filter(g => g.physical && g.digital).length;
   const spent = col.reduce((s, g) => s + (g.price || 0), 0);
-  const wishCost = wish.reduce((s, g) => s + (g.price || 0), 0);
+  const wishCost = wish.reduce((s, g) => s + (priceOf(g)?.current_price ?? g.price ?? 0), 0);
+  const onSale = wish.filter(g => priceOf(g)?.discount_pct).length;
   const backlog = col.filter(g => g.status === 'backlog');
   const backlogHours = backlog.reduce((s, g) => s + (g.hltb?.main || 0), 0);
   const backlogKnown = backlog.filter(g => g.hltb?.main).length;
@@ -429,7 +652,7 @@ function renderStats() {
       <div class="tile"><div class="v">${fmtHours(Math.round(backlogHours))}</div><div class="l">Por jogar (${backlogKnown}/${backlog.length} com HLTB)</div></div>
       <div class="tile"><div class="v">${avg ? avg.toFixed(1).replace('.', ',') + '★' : '—'}</div><div class="l">Avaliação média</div></div>
       <div class="tile"><div class="v" style="font-size:22px">${fmtMoney(spent)}</div><div class="l">Investido na coleção</div></div>
-      <div class="tile"><div class="v" style="font-size:22px">${fmtMoney(wishCost)}</div><div class="l">Para comprar a wishlist</div></div>
+      <div class="tile"><div class="v" style="font-size:22px">${fmtMoney(wishCost)}</div><div class="l">Para comprar a wishlist${onSale ? ` · ${onSale} em promoção` : ''}</div></div>
     </div>
     <div class="group-title" style="margin-top:22px">Por plataforma</div>
     <div class="bars">${platBars}</div>
@@ -440,12 +663,108 @@ function renderStats() {
 
 /* ---------------- Mais ---------------- */
 
+/* ---------------- Login ---------------- */
+
+function renderLogin() {
+  const signup = ui.loginMode === 'signup';
+  return `<div class="login">
+    <img class="login-logo" src="icons/icon-192.png" alt="">
+    <h1>Setlist</h1>
+    <p class="sub">A tua coleção Nintendo guardada na nuvem, com preços da eShop atualizados todos os dias.</p>
+    <div class="segmented" style="margin:18px 0 14px">
+      <button class="${signup ? '' : 'active'}" data-action="login-mode" data-v="signin">Entrar</button>
+      <button class="${signup ? 'active' : ''}" data-action="login-mode" data-v="signup">Criar conta</button>
+    </div>
+    <form id="login-form" class="group" autocomplete="on">
+      <div class="field"><label>Email</label><input id="login-email" type="email" autocomplete="email" autocapitalize="none" placeholder="nome@email.com" value="${esc(ui.loginEmail || '')}" required></div>
+      <div class="field"><label>Palavra-passe</label><input id="login-password" type="password" autocomplete="${signup ? 'new-password' : 'current-password'}" placeholder="${signup ? 'mínimo 6 caracteres' : '••••••'}" required></div>
+    </form>
+    <div id="login-msg" class="hint" style="min-height:20px"></div>
+    <button class="btn block" data-action="do-login" id="login-btn">${signup ? 'Criar conta' : 'Entrar'}</button>
+    ${signup ? '' : '<button class="more-link" style="display:block;margin:14px auto 0" data-action="forgot">Esqueci-me da palavra-passe</button>'}
+    <button class="more-link" style="display:block;margin:26px auto 0;color:var(--text-2)" data-action="skip-login">${Cloud.loggedIn ? 'Voltar' : 'Continuar sem conta'}</button>
+  </div>`;
+}
+
+function loginMsg(text, ok = false) {
+  const el = $('#login-msg');
+  if (el) { el.textContent = text; el.style.color = ok ? 'var(--ok)' : '#ff3b30'; }
+}
+
+async function doLogin() {
+  const email = $('#login-email').value.trim();
+  const pw = $('#login-password').value;
+  ui.loginEmail = email;
+  if (!email || !pw) { loginMsg('Preenche o email e a palavra-passe.'); return; }
+  const btn = $('#login-btn');
+  btn.disabled = true;
+  try {
+    if (ui.loginMode === 'signup') {
+      if (pw.length < 6) { loginMsg('A palavra-passe precisa de pelo menos 6 caracteres.'); btn.disabled = false; return; }
+      const r = await Cloud.signUp(email, pw);
+      if (r.confirm) {
+        ui.loginMode = 'signin';
+        render();
+        loginMsg('Conta criada! Confirma o email (vê a caixa de correio) e depois entra aqui.', true);
+        return;
+      }
+    } else {
+      await Cloud.signIn(email, pw);
+    }
+    await afterLogin();
+  } catch (err) {
+    loginMsg(navigator.onLine ? err.message : 'Estás offline.');
+    btn.disabled = false;
+  }
+}
+
+async function afterLogin() {
+  lsSet('skipLogin', false);
+  // Enviar para a conta os jogos que já estão neste dispositivo
+  const linkKey = 'sync:linked:' + Cloud.user?.id;
+  if (!lsGet(linkKey, false)) { Sync.markDirty(games.map(g => g.id)); lsSet(linkKey, true); }
+  ui.tab = 'collection';
+  render();
+  toast(`Olá! Sessão iniciada como ${Cloud.user?.email || ''}`);
+  await Sync.run();
+}
+
+async function logout() {
+  if (!confirm('Terminar sessão? Os jogos continuam guardados neste dispositivo.')) return;
+  await Cloud.signOut();
+  Sync.reset();
+  prices = {};
+  lsSet('prices', {});
+  lsSet('skipLogin', true);
+  render();
+  toast('Sessão terminada');
+}
+
+function renderAccount() {
+  if (!Cloud.loggedIn) {
+    return `<div class="card-list">
+      <button class="link-row" data-action="go-login"><span>Entrar / criar conta</span>${ICON.chev}</button>
+    </div>
+    <div class="hint">Com conta, a coleção fica guardada na nuvem, sincroniza entre dispositivos e recebes preços da eShop.</div>`;
+  }
+  return `<div class="card-list">
+      <div class="link-row" style="color:var(--text)"><span>${esc(Cloud.user?.email || '')}</span></div>
+      <button class="link-row" data-action="sync-now"><span>Sincronizar agora</span><span class="d" id="sync-status">${esc(syncLabel())}</span></button>
+      <button class="link-row" data-action="refresh-prices"><span>Atualizar preços da wishlist</span>${ICON.chev}</button>
+      <button class="link-row danger" data-action="logout"><span>Terminar sessão</span></button>
+    </div>
+    <div class="hint">Os preços da eShop (Portugal) dos jogos da wishlist de Switch e Switch 2 são atualizados automaticamente todos os dias.</div>`;
+}
+
 function renderMore() {
   const missing = games.filter(g => !g.cover).length;
   return `
-    <div class="page-head"><div><h1>Mais</h1><div class="sub">Importar, backups e ajuda</div></div></div>
+    <div class="page-head"><div><h1>Mais</h1><div class="sub">Conta, importar, backups e ajuda</div></div></div>
+    <div class="group-title">Conta</div>
+    ${renderAccount()}
     <div class="group-title">Adicionar</div>
     <div class="card-list">
+      <button class="link-row" data-action="seed"><span>Carregar a minha lista inicial</span><span class="d">${SEED_COUNT} jogos</span></button>
       <button class="link-row" data-action="bulk"><span>Importar lista de jogos</span>${ICON.chev}</button>
       <button class="link-row" data-action="autofill"><span>Preencher capas e info em falta</span><span class="d">${missing} sem capa</span></button>
     </div>
@@ -577,7 +896,7 @@ function detailHTML(g) {
     ['Produtora', g.developer],
     ['Editora', g.publisher],
     ['Género', g.genres],
-    [isWish ? 'Preço' : 'Preço pago', g.price != null ? fmtMoney(g.price) : ''],
+    [isWish ? 'Preço alvo' : 'Preço pago', g.price != null ? fmtMoney(g.price) : ''],
     ['Comprado em', !isWish ? (g.purchaseDate ? fmtDate(g.purchaseDate) : '') : ''],
     ['Prioridade', isWish ? PRIORITIES[g.priority || 2] : ''],
     ['Adicionado', fmtDate(g.addedAt)]
@@ -612,6 +931,8 @@ function detailHTML(g) {
     <div class="group-title">A minha avaliação</div>
     <div class="stars">${stars}</div>`}
 
+    ${isWish ? eshopHTML(g) : ''}
+
     <div class="group-title">Duração · HowLongToBeat</div>
     ${hasHltb ? `<div class="hltb">
       <div class="box"><div class="v">${fmtHours(g.hltb.main)}</div><div class="l">Principal</div></div>
@@ -643,6 +964,39 @@ function detailHTML(g) {
       <button class="link-row danger" data-action="delete"><span>Apagar jogo</span></button>
     </div>
   </div>`;
+}
+
+function eshopHTML(g) {
+  if (g.platform === '3ds') return '';
+  const head = '<div class="group-title">Preço na eShop · Portugal</div>';
+  if (!Cloud.loggedIn) {
+    return head + `<div class="card-list"><button class="link-row" data-action="go-login"><span>Entra na conta para ver o preço atual</span>${ICON.chev}</button></div>`;
+  }
+  const p = priceOf(g);
+  if (!p) {
+    return head + `<div class="card-list"><button class="link-row" data-action="refresh-prices"><span>Procurar preço agora</span><span class="d">${priceRefreshRunning ? 'a procurar…' : ''}</span></button></div>`;
+  }
+  if (p.error === 'not_found' || !p.nsuid) {
+    return head + `<div class="hint" style="margin-top:0">Não encontrei este jogo na eShop portuguesa. Confirma se o título está igual ao da eShop (ex.: em inglês) e depois toca em “Procurar preço agora”.</div>
+      <div class="card-list" style="margin-top:8px"><button class="link-row" data-action="refresh-prices"><span>Procurar preço agora</span></button></div>`;
+  }
+  const status = { preorder: 'Pré-venda', onsale: '', not_found: 'Indisponível', sales_termination: 'Já não está à venda' }[p.sales_status] ?? '';
+  const target = g.price != null && p.current_price != null && p.current_price <= g.price;
+  return head + `<div class="price-box">
+      <div class="price-main">
+        <span class="now ${p.discount_pct ? 'on-sale' : ''}">${p.current_price != null ? fmtMoney(p.current_price) : '—'}</span>
+        ${p.discount_pct ? `<span class="was">${fmtMoney(p.regular_price)}</span><span class="sale">−${p.discount_pct}%</span>` : ''}
+      </div>
+      ${p.discount_pct && p.discount_end ? `<div class="price-line">Promoção até ${fmtDate(p.discount_end)}</div>` : ''}
+      ${status ? `<div class="price-line">${status}</div>` : ''}
+      ${target ? '<div class="price-line" style="color:var(--ok);font-weight:700">🎯 Está abaixo do teu preço alvo!</div>' : ''}
+      <div class="price-line">Mais baixo registado: ${p.lowest_price != null ? fmtMoney(p.lowest_price) : '—'}</div>
+      <div class="price-line small">“${esc(p.eshop_title || '')}” · verificado ${p.checked_at ? timeAgo(p.checked_at) : '—'}</div>
+    </div>
+    <div class="card-list" style="margin-top:8px">
+      ${p.eshop_url ? `<a class="link-row" href="${esc(p.eshop_url)}" target="_blank" rel="noopener"><span>Abrir na eShop</span>${ICON.ext}</a>` : ''}
+      <button class="link-row" data-action="refresh-prices"><span>Atualizar preços</span></button>
+    </div>`;
 }
 
 /* ---------------- Editor ---------------- */
@@ -727,7 +1081,7 @@ function editorHTML() {
     <div class="group">
       ${isWish ? `
       <div class="field"><label>Prioridade</label><select data-f="priority">${prioOpts}</select></div>
-      <div class="field"><label>Preço</label><input data-f="price" type="text" inputmode="decimal" placeholder="0,00" value="${d.price ?? ''}"><span class="unit">€</span></div>
+      <div class="field"><label>Preço alvo</label><input data-f="price" type="text" inputmode="decimal" placeholder="avisa-me abaixo de…" value="${d.price ?? ''}"><span class="unit">€</span></div>
       ` : `
       <div class="field"><label>Estado</label><select data-f="status">${statusOpts}</select></div>
       <div class="field"><label>Avaliação</label><select data-f="rating">${[0, 1, 2, 3, 4, 5].map(n => `<option value="${n}" ${(d.rating || 0) === n ? 'selected' : ''}>${n ? '★'.repeat(n) : '—'}</option>`).join('')}</select></div>
@@ -1026,13 +1380,37 @@ async function doBulk() {
     added.push(g);
   }
   if (!added.length) { toast(skipped ? 'Todos os jogos já existiam' : 'Não há nada para importar'); return; }
-  await DB.putMany(added);
-  games.push(...added);
+  await saveMany(added);
   sheet.close();
   ui.tab = list;
   render();
   toast(`${added.length} jogos importados${skipped ? ` · ${skipped} repetidos ignorados` : ''}`, 3000);
   if (auto) autofill(added);
+}
+
+/* ---------------- Lista inicial ---------------- */
+
+const SEED_COUNT = 143;
+
+async function loadSeed() {
+  let seed;
+  try { seed = await (await fetch('seed.json', { cache: 'no-cache' })).json(); }
+  catch { toast('Não foi possível carregar a lista'); return; }
+  const added = [];
+  for (const s of seed.games || []) {
+    const exists = [...games, ...added].some(g => g.list === 'collection' && g.platform === s.platform && norm(g.title) === norm(s.title));
+    if (exists) continue;
+    const g = blankGame('collection');
+    Object.assign(g, { title: s.title, platform: s.platform, physical: !!s.physical, digital: !!s.digital });
+    added.push(g);
+  }
+  if (!added.length) { toast('A lista já está toda carregada ✓'); return; }
+  if (!confirm(`Adicionar ${added.length} jogos à coleção e procurar as capas automaticamente?`)) return;
+  await saveMany(added);
+  ui.tab = 'collection';
+  render();
+  toast(`${added.length} jogos adicionados`, 2500);
+  autofill(added);
 }
 
 /* ---------------- Preencher capas automaticamente ---------------- */
@@ -1049,7 +1427,7 @@ async function autofill(list) {
   for (let i = 0; i < todo.length; i++) {
     const g = getGame(todo[i].id);
     if (!g) continue;
-    toast(`A procurar capas… ${i + 1}/${todo.length}`, 60000);
+    toast(`🔎 A procurar capas… ${i + 1}/${todo.length}`, 60000, true);
     try {
       const res = await wikiSearch(g.title);
       const best = res.find(r => r.thumb && /video ?game/i.test(r.description)) || res.find(r => r.thumb);
@@ -1099,8 +1477,7 @@ async function importBackup(file) {
     const valid = list.filter(g => g && g.id && g.title).map(g => ({ ...blankGame(g.list || 'collection'), ...g }));
     if (!valid.length) throw new Error('vazio');
     if (!confirm(`Importar ${valid.length} jogos? Os jogos que já existem são atualizados, os restantes mantêm-se.`)) return;
-    await DB.putMany(valid);
-    games = await DB.all();
+    await saveMany(valid);
     render();
     toast(`${valid.length} jogos importados`);
   } catch (err) {
@@ -1202,7 +1579,24 @@ async function handleAction(el) {
     }
     case 'cover-remove': draft.cover = ''; refreshEditor(); break;
 
+    // Conta
+    case 'login-mode': ui.loginEmail = $('#login-email')?.value || ui.loginEmail; ui.loginMode = v; render(); break;
+    case 'do-login': await doLogin(); break;
+    case 'forgot': {
+      const email = ($('#login-email')?.value || '').trim();
+      if (!email) { loginMsg('Escreve primeiro o teu email.'); break; }
+      try { await Cloud.resetPassword(email); loginMsg('Enviámos-te um email para definires uma nova palavra-passe.', true); }
+      catch (err) { loginMsg(err.message); }
+      break;
+    }
+    case 'skip-login': lsSet('skipLogin', true); ui.tab = Cloud.loggedIn ? 'more' : 'collection'; render(); break;
+    case 'go-login': ui.tab = 'login'; ui.loginMode = 'signin'; render(); window.scrollTo({ top: 0 }); break;
+    case 'logout': await logout(); break;
+    case 'sync-now': Sync.run(); break;
+    case 'refresh-prices': refreshPricesNow(true); break;
+
     // Mais
+    case 'seed': await loadSeed(); break;
     case 'bulk': openBulk(); break;
     case 'do-bulk': await doBulk(); break;
     case 'autofill': autofill(); break;
@@ -1210,7 +1604,10 @@ async function handleAction(el) {
     case 'import': $('#file-backup').click(); break;
     case 'wipe':
       if (confirm('Apagar TODOS os jogos da coleção e da wishlist?') && confirm('Tens a certeza? Isto não pode ser desfeito (a não ser que tenhas um backup).')) {
-        await DB.clear(); games = []; render(); toast('Dados apagados');
+        const ids = games.map(g => g.id);
+        await DB.clear(); games = [];
+        Sync.markDeleted(ids);
+        render(); toast('Dados apagados');
       }
       break;
   }
@@ -1238,6 +1635,7 @@ function bindEvents() {
   });
 
   $('#sheet-backdrop').addEventListener('click', () => sheet.close());
+  document.addEventListener('submit', e => { e.preventDefault(); if (e.target.id === 'login-form') doLogin(); });
 
   document.addEventListener('input', e => {
     if (e.target.id === 'search') {
@@ -1261,6 +1659,7 @@ function bindEvents() {
   document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.id === 'f-title') { e.preventDefault(); e.target.blur(); searchInfo(); }
     if (e.key === 'Enter' && e.target.id === 'search') e.target.blur();
+    if (e.key === 'Enter' && (e.target.id === 'login-password' || e.target.id === 'login-email')) { e.preventDefault(); doLogin(); }
     if (e.key === 'Escape' && sheet.isOpen) sheet.close();
   });
 
@@ -1292,7 +1691,19 @@ async function init() {
     console.error(err);
     toast('Erro ao abrir a base de dados');
   }
+  const fromLink = Cloud.consumeUrlHash();
   render();
+  if (fromLink === 'recovery') {
+    const pw = prompt('Escreve a nova palavra-passe (mínimo 6 caracteres):');
+    if (pw && pw.length >= 6) {
+      try { await Cloud.updatePassword(pw); toast('Palavra-passe alterada ✓'); }
+      catch (err) { toast('Erro: ' + err.message); }
+    }
+  }
+  if (fromLink) await afterLogin();
+  else if (Cloud.loggedIn) Sync.run();
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') Sync.schedule(200); });
+  window.addEventListener('online', () => Sync.schedule(200));
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW', err));

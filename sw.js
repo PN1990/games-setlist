@@ -1,10 +1,12 @@
 // Service worker: app offline + cache das capas.
-const VERSION = 'setlist-v1';
+const VERSION = 'setlist-v2';
 const SHELL = [
   './',
   './index.html',
-  './styles.css?v=1',
-  './app.js?v=1',
+  './styles.css?v=2',
+  './cloud.js?v=2',
+  './app.js?v=2',
+  './seed.json',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/apple-touch-icon.png'
