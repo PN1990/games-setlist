@@ -8,6 +8,7 @@ App web (PWA) para gerir a coleção de jogos **Nintendo Switch**, **Switch 2** 
 - **Conta (login)**: a coleção fica na nuvem (Supabase) e sincroniza entre dispositivos; funciona offline
 - **Preços da eShop (Portugal)** para a wishlist de Switch/Switch 2, atualizados automaticamente todos os dias:
   preço atual, promoções (−%), data de fim, preço mais baixo registado e aviso de preço alvo
+- **Leitor de código de barras (EAN)**: aponta a câmara à caixa para saber se já tens o jogo ou para o adicionar já preenchido
 - Capas, descrição, ano, produtora, editora e género via **Wikipedia/Wikidata** (ou foto tirada à caixa)
 - Tempos do **HowLongToBeat** (Principal / + Extras / Completista) com link direto para o jogo
 - Estado (Por jogar, A jogar, Terminado, 100%, Abandonado), avaliação, favoritos e notas
@@ -22,5 +23,7 @@ App web (PWA) para gerir a coleção de jogos **Nintendo Switch**, **Switch 2** 
 - `index.html`, `styles.css`, `app.js` — a app
 - `cloud.js` — login e sincronização (REST do Supabase, sem dependências)
 - `sw.js` — offline e cache das capas
-- `supabase/functions/setlist-prices` — edge function que vai buscar os preços à eShop PT
+- `supabase/functions/setlist-prices` — edge function: preços da eShop PT e wishlists do Deku Deals
+- `supabase/functions/setlist-ean` — edge function: código de barras → nome do jogo (UPCitemdb / Open Products Facts, com cache)
+- `vendor/zxing.min.js` — leitor de códigos de barras (ZXing, Apache 2.0)
 - `supabase/migrations` — tabelas `setlist_games` / `setlist_prices` (RLS) e cron diário

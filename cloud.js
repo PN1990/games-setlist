@@ -193,6 +193,10 @@ const Cloud = {
     return (await this.request('/rest/v1/setlist_prices?select=*')) || [];
   },
 
+  async lookupEan(ean, learn) {
+    return this.request('/functions/v1/setlist-ean', { method: 'POST', body: learn ? { ean, learn: true, ...learn } : { ean } });
+  },
+
   async refreshPrices() {
     return this.request('/functions/v1/setlist-prices', { method: 'POST', body: {} });
   }

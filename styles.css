@@ -378,3 +378,10 @@ textarea.bulk {
 .toast.top.show { transform: translate(-50%, 0); }
 
 .cover img.sq, .row .thumb img.sq { object-fit: contain; background: #1c1c1e; }
+
+/* ---------- Leitor de código de barras ---------- */
+.scanner { position: relative; background: #000; border-radius: var(--radius); overflow: hidden; aspect-ratio: 4 / 3; }
+.scanner video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.scan-frame { position: absolute; left: 8%; right: 8%; top: 30%; bottom: 30%; border: 3px solid rgba(255,255,255,.9); border-radius: 12px; box-shadow: 0 0 0 999px rgba(0,0,0,.35); }
+.scan-line { position: absolute; left: 6px; right: 6px; top: 50%; height: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: scanline 1.6s ease-in-out infinite alternate; }
+@keyframes scanline { from { top: 12%; } to { top: 88%; } }
