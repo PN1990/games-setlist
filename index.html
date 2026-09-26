@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Setlist</title>
+  <meta name="description" content="A minha coleção de jogos Nintendo Switch, Switch 2 e 3DS">
+  <meta name="theme-color" content="#e60012">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Setlist">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css?v=1">
+</head>
+<body>
+  <div id="app">
+    <main id="view"></main>
+
+    <button id="fab" class="fab" data-action="new" aria-label="Adicionar jogo">
+      <svg viewBox="0 0 24 24" width="28" height="28"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" fill="none"/></svg>
+    </button>
+
+    <nav id="tabbar" class="tabbar">
+      <button data-tab="collection" class="active">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>
+        <span>Coleção</span>
+      </button>
+      <button data-tab="wishlist">
+        <svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.6a4.3 4.3 0 0 1 7.5 2.7c0 5.6-7.5 10.2-7.5 10.2z"/></svg>
+        <span>Wishlist</span>
+      </button>
+      <button data-tab="stats">
+        <svg viewBox="0 0 24 24"><path d="M5 20V11M12 20V4M19 20v-6"/></svg>
+        <span>Estatísticas</span>
+      </button>
+      <button data-tab="more">
+        <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+        <span>Mais</span>
+      </button>
+    </nav>
+
+    <div id="sheet-backdrop" class="sheet-backdrop"></div>
+    <section id="sheet" class="sheet" role="dialog" aria-modal="true"></section>
+    <div id="toast" class="toast"></div>
+  </div>
+
+  <input type="file" id="file-cover" accept="image/*" hidden>
+  <input type="file" id="file-backup" accept="application/json,.json" hidden>
+
+  <script src="app.js?v=1"></script>
+</body>
+</html>
