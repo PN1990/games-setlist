@@ -91,76 +91,90 @@ async function fetchPrices(nsuids: string[]): Promise<Record<string, PriceInfo>>
   return out;
 }
 
-// ---------- Wishlist do Deku Deals (sincronização num só sentido: Deku → Setlist) ----------
+// ---------- Wishlists do Deku Deals (sincronização num só sentido: Deku → Setlist) ----------
+// Cada utilizador pode ligar várias wishlists, cada uma associada a uma plataforma.
 
 const DEKU_RE = /^https?:\/\/(?:www\.)?dekudeals\.com\/wishlist\/([a-z0-9]+)/i;
+const PLATFORMS = new Set(['switch', 'switch2', '3ds']);
 
-type Settings = { user_id: string; deku_wishlist_url: string | null };
+type DekuList = { url: string; platform?: string; synced_at?: string; count?: number; error?: string | null };
 type DekuItem = { name: string; link: string; added_at?: string };
+type Row = { id: string; data: Record<string, unknown>; deleted: boolean };
+
+async function syncList(userId: string, list: DekuList, code: string, rows: Row[]) {
+  const platform = PLATFORMS.has(list.platform || '') ? list.platform! : 'switch';
+  const r = await fetch(`https://www.dekudeals.com/wishlist/${code}.json`);
+  if (!r.ok) throw new Error(`deku ${r.status}`);
+  const j = await r.json();
+  if (!Array.isArray(j.items)) throw new Error('deku sem items');
+  const items = (j.items as DekuItem[]).filter(i => i && i.name && i.link);
+
+  const ids = new Set(rows.map(r => r.id));
+  const mine = rows.filter(r => r.data?.dekuList === code);
+  const linked = new Set(mine.map(r => r.data.dekuLink as string));
+
+  const now = new Date().toISOString();
+  const inserts = [];
+  for (const it of items) {
+    const slug = it.link.split('/').pop()!.replace(/[^a-z0-9-]/gi, '').slice(0, 80);
+    const id = `deku-${userId}-${code}-${slug}`;
+    // Já existe (mesmo que apagado de propósito na Setlist) → não voltar a criar
+    if (ids.has(id) || linked.has(it.link)) continue;
+    inserts.push({
+      id, user_id: userId, deleted: false,
+      data: {
+        id, title: it.name, list: 'wishlist', platform, physical: false, digital: false,
+        status: 'none', rating: 0, favorite: false, priority: 2, price: null,
+        hltb: { main: null, extra: null, complete: null },
+        dekuLink: it.link, dekuList: code, addedAt: it.added_at || now, updatedAt: now
+      }
+    });
+  }
+  if (inserts.length) {
+    const { error } = await admin.from('setlist_games').insert(inserts);
+    if (error) throw error;
+  }
+
+  // Removidos no Deku → sair da wishlist da Setlist (só os desta lista que continuam na wishlist)
+  let removed = 0;
+  if (items.length) {
+    const links = new Set(items.map(i => i.link));
+    for (const r of mine) {
+      if (r.deleted || r.data.list !== 'wishlist' || links.has(r.data.dekuLink as string)) continue;
+      await admin.from('setlist_games').update({ deleted: true, data: {} }).eq('id', r.id);
+      removed++;
+    }
+  }
+  return { count: items.length, added: inserts.length, removed };
+}
 
 async function dekuSync(userId: string | null) {
-  let q = admin.from('setlist_settings').select('user_id,deku_wishlist_url').not('deku_wishlist_url', 'is', null);
+  let q = admin.from('setlist_settings').select('user_id,deku_lists');
   if (userId) q = q.eq('user_id', userId);
   const { data: settings, error } = await q;
   if (error) throw error;
-  const report: Record<string, unknown> = {};
-  for (const st of (settings || []) as Settings[]) {
-    const m = (st.deku_wishlist_url || '').match(DEKU_RE);
-    if (!m) {
-      await admin.from('setlist_settings').update({ deku_error: 'invalid_url' }).eq('user_id', st.user_id);
-      continue;
+  const report: Record<string, { added: number; removed: number }> = {};
+  for (const st of (settings || []) as { user_id: string; deku_lists: DekuList[] }[]) {
+    const lists = Array.isArray(st.deku_lists) ? st.deku_lists : [];
+    if (!lists.length) continue;
+    const { data: rows, error: gErr } = await admin.from('setlist_games')
+      .select('id,data,deleted').eq('user_id', st.user_id).limit(5000);
+    if (gErr) throw gErr;
+    const total = { added: 0, removed: 0 };
+    const updated: DekuList[] = [];
+    for (const list of lists) {
+      const code = (list.url || '').match(DEKU_RE)?.[1];
+      if (!code) { updated.push({ ...list, error: 'invalid_url' }); continue; }
+      try {
+        const res = await syncList(st.user_id, list, code, (rows || []) as Row[]);
+        total.added += res.added; total.removed += res.removed;
+        updated.push({ ...list, synced_at: new Date().toISOString(), count: res.count, error: null });
+      } catch (e) {
+        updated.push({ ...list, error: String((e as Error).message || e) });
+      }
     }
-    try {
-      const r = await fetch(`https://www.dekudeals.com/wishlist/${m[1]}.json`);
-      if (!r.ok) throw new Error(`deku ${r.status}`);
-      const j = await r.json();
-      if (!Array.isArray(j.items)) throw new Error('deku sem items');
-      const items = (j.items as DekuItem[]).filter(i => i && i.name && i.link);
-
-      const { data: rows, error: gErr } = await admin.from('setlist_games')
-        .select('id,data,deleted').eq('user_id', st.user_id).limit(5000);
-      if (gErr) throw gErr;
-      const ids = new Set((rows || []).map((r: { id: string }) => r.id));
-      const byLink = new Map<string, { id: string; data: Record<string, unknown>; deleted: boolean }>();
-      for (const r of rows || []) { const l = (r.data as Record<string, unknown>)?.dekuLink; if (typeof l === 'string') byLink.set(l, r); }
-
-      const now = new Date().toISOString();
-      const inserts = [];
-      for (const it of items) {
-        const slug = it.link.split('/').pop()!.replace(/[^a-z0-9-]/gi, '').slice(0, 80);
-        const id = `deku-${st.user_id}-${slug}`;
-        // Já existe (mesmo que apagado de propósito na Setlist) → não voltar a criar
-        if (ids.has(id) || byLink.has(it.link)) continue;
-        inserts.push({
-          id, user_id: st.user_id, deleted: false,
-          data: {
-            id, title: it.name, list: 'wishlist', platform: 'switch', physical: false, digital: false,
-            status: 'none', rating: 0, favorite: false, priority: 2, price: null,
-            hltb: { main: null, extra: null, complete: null },
-            dekuLink: it.link, addedAt: it.added_at || now, updatedAt: now
-          }
-        });
-      }
-      if (inserts.length) {
-        const { error: iErr } = await admin.from('setlist_games').insert(inserts);
-        if (iErr) throw iErr;
-      }
-
-      // Removidos no Deku → sair da wishlist da Setlist (só os que vieram do Deku e continuam na wishlist)
-      let removed = 0;
-      if (items.length) {
-        const links = new Set(items.map(i => i.link));
-        const gone = [...byLink.values()].filter(r => !r.deleted && r.data.list === 'wishlist' && !links.has(r.data.dekuLink as string));
-        for (const r of gone) {
-          await admin.from('setlist_games').update({ deleted: true, data: {} }).eq('id', r.id);
-          removed++;
-        }
-      }
-      await admin.from('setlist_settings').update({ deku_synced_at: now, deku_count: items.length, deku_error: null }).eq('user_id', st.user_id);
-      report[st.user_id] = { added: inserts.length, removed };
-    } catch (e) {
-      await admin.from('setlist_settings').update({ deku_error: String((e as Error).message || e) }).eq('user_id', st.user_id);
-    }
+    await admin.from('setlist_settings').update({ deku_lists: updated }).eq('user_id', st.user_id);
+    report[st.user_id] = total;
   }
   return report;
 }

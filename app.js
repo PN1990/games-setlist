@@ -343,21 +343,77 @@ async function loadSettings() {
   lsSet('settings', settings);
 }
 
-async function linkDeku() {
-  const cur = settings?.deku_wishlist_url || '';
-  const url = prompt('Cola o link público da tua wishlist do Deku Deals\n(ex.: https://www.dekudeals.com/wishlist/abc123)\n\nDeixa vazio para desligar.', cur);
-  if (url == null) return;
-  const clean = url.trim();
-  if (clean && !DEKU_RE.test(clean)) { toast('Esse link não parece uma wishlist do Deku Deals'); return; }
+// ---- Wishlists do Deku Deals (várias, cada uma com a sua plataforma) ----
+
+const dekuLists = () => (Array.isArray(settings?.deku_lists) ? settings.deku_lists : []);
+const dekuCode = url => (url || '').match(/wishlist\/([a-z0-9]+)/i)?.[1] || url;
+let dekuNewPlatform = 'switch';
+
+function openDeku() {
+  sheet.open(dekuHTML(), () => render());
+}
+
+function dekuHTML() {
+  const lists = dekuLists();
+  const rows = lists.map((l, i) => {
+    const plat = PLATFORMS[l.platform] || PLATFORMS.switch;
+    const status = l.error ? (l.error === 'deku 404' ? 'Não encontrada — a lista é pública?' : 'Erro: ' + l.error)
+      : l.synced_at ? `${l.count ?? 0} jogos · sincronizada ${timeAgo(l.synced_at)}` : 'A aguardar a primeira sincronização';
+    return `<div class="link-row" style="color:var(--text);gap:10px">
+      <span style="min-width:0"><span class="pill" style="background:${plat.color}">${plat.name}</span>
+        <b style="margin-left:6px">${esc(dekuCode(l.url))}</b>
+        <div class="d" style="margin-top:3px;${l.error ? 'color:#ff3b30' : ''}">${esc(status)}</div></span>
+      <button class="btn danger small" data-action="deku-remove" data-i="${i}">Remover</button>
+    </div>`;
+  }).join('');
+  const plats = ['switch', 'switch2'].map(k => `<button class="${dekuNewPlatform === k ? 'active' : ''}" data-action="deku-plat" data-v="${k}">${PLATFORMS[k].name}</button>`).join('');
+  return `${sheetHead('Wishlists do Deku Deals', ['close', 'Fechar'], null)}
+  <div class="sheet-body">
+    <div class="about">
+      Liga as tuas wishlists públicas do Deku Deals e escolhe a plataforma de cada uma. Todos os dias, os jogos que lá
+      adicionares entram na wishlist da Setlist (com o preço da eShop) e os que removeres saem.
+    </div>
+    ${lists.length ? `<div class="group-title">Ligadas</div><div class="card-list">${rows}</div>` : ''}
+    <div class="group-title">Adicionar wishlist</div>
+    <div class="group">
+      <div class="field stack"><label>Link público da wishlist</label>
+        <input id="deku-url" type="url" autocapitalize="none" autocomplete="off" placeholder="https://www.dekudeals.com/wishlist/abc123">
+      </div>
+    </div>
+    <div class="group-title">Plataforma dos jogos desta lista</div>
+    <div class="segmented plat">${plats}</div>
+    <div style="height:14px"></div>
+    <button class="btn block" data-action="deku-add">Ligar wishlist</button>
+    <div class="hint">No Deku Deals: Wishlist → Share / tornar pública → copiar o link.</div>
+  </div>`;
+}
+
+async function saveDekuLists(lists, msg) {
   try {
-    await Cloud.saveSettings({ deku_wishlist_url: clean.match(DEKU_RE)?.[0] || null, deku_error: null });
+    await Cloud.saveSettings({ deku_lists: lists });
     await loadSettings();
-    render();
-    if (clean) { toast('Wishlist do Deku ligada ✓'); refreshPricesNow(true); }
-    else toast('Wishlist do Deku desligada');
+    sheet.replace(dekuHTML());
+    toast(msg);
+    if (lists.length) refreshPricesNow(false).then(() => { if (sheet.isOpen && $('#deku-url')) sheet.replace(dekuHTML()); });
   } catch (err) {
     toast('Erro: ' + err.message);
   }
+}
+
+async function addDeku() {
+  const url = ($('#deku-url')?.value || '').trim();
+  const m = url.match(DEKU_RE);
+  if (!m) { toast('Esse link não parece uma wishlist do Deku Deals'); return; }
+  const lists = dekuLists();
+  if (lists.some(l => dekuCode(l.url) === dekuCode(m[0]))) { toast('Essa wishlist já está ligada'); return; }
+  await saveDekuLists([...lists, { url: m[0], platform: dekuNewPlatform }], `Wishlist ligada ✓ A importar…`);
+}
+
+async function removeDeku(i) {
+  const lists = dekuLists();
+  const l = lists[i];
+  if (!l || !confirm(`Desligar a wishlist ${dekuCode(l.url)}? Os jogos que já vieram dela ficam na Setlist.`)) return;
+  await saveDekuLists(lists.filter((_, j) => j !== i), 'Wishlist desligada');
 }
 let lastPriceCall = 0;
 let priceRefreshRunning = false;
@@ -781,10 +837,11 @@ async function logout() {
 }
 
 function dekuLabel() {
-  if (!settings?.deku_wishlist_url) return 'Ligar';
-  if (settings.deku_error) return 'Erro — toca para verificar';
-  if (!settings.deku_synced_at) return 'Ligada · a aguardar';
-  return `Ligada · ${settings.deku_count ?? 0} jogos · ${timeAgo(settings.deku_synced_at)}`;
+  const lists = dekuLists();
+  if (!lists.length) return 'Ligar';
+  if (lists.some(l => l.error)) return 'Erro — toca para ver';
+  const n = lists.reduce((t, l) => t + (l.count || 0), 0);
+  return `${lists.length} ${lists.length === 1 ? 'lista' : 'listas'} · ${n} jogos`;
 }
 
 function renderAccount() {
@@ -798,10 +855,10 @@ function renderAccount() {
       <div class="link-row" style="color:var(--text)"><span>${esc(Cloud.user?.email || '')}</span></div>
       <button class="link-row" data-action="sync-now"><span>Sincronizar agora</span><span class="d" id="sync-status">${esc(syncLabel())}</span></button>
       <button class="link-row" data-action="refresh-prices"><span>Atualizar preços da wishlist</span>${ICON.chev}</button>
-      <button class="link-row" data-action="deku-link"><span>Wishlist do Deku Deals</span><span class="d">${esc(dekuLabel())}</span></button>
+      <button class="link-row" data-action="deku-link"><span>Wishlists do Deku Deals</span><span class="d">${esc(dekuLabel())}</span></button>
       <button class="link-row danger" data-action="logout"><span>Terminar sessão</span></button>
     </div>
-    <div class="hint">Os preços da eShop (Portugal) dos jogos da wishlist de Switch e Switch 2 são atualizados automaticamente todos os dias. Se ligares a tua wishlist do Deku Deals, os jogos que lá adicionares (ou removeres) passam também para a wishlist da Setlist.</div>`;
+    <div class="hint">Os preços da eShop (Portugal) dos jogos da wishlist de Switch e Switch 2 são atualizados automaticamente todos os dias. Podes ligar várias wishlists do Deku Deals (ex.: uma para Switch e outra para Switch 2): os jogos que lá adicionares (ou removeres) passam também para a wishlist da Setlist.</div>`;
 }
 
 function renderMore() {
@@ -1643,7 +1700,10 @@ async function handleAction(el) {
     case 'logout': await logout(); break;
     case 'sync-now': Sync.run(); break;
     case 'refresh-prices': refreshPricesNow(true); break;
-    case 'deku-link': await linkDeku(); break;
+    case 'deku-link': openDeku(); break;
+    case 'deku-plat': dekuNewPlatform = v; { const u = $('#deku-url')?.value; sheet.replace(dekuHTML()); if (u) $('#deku-url').value = u; } break;
+    case 'deku-add': await addDeku(); break;
+    case 'deku-remove': await removeDeku(parseInt(el.dataset.i, 10)); break;
 
     // Mais
     case 'seed': await loadSeed(); break;

@@ -75,3 +75,7 @@ alter table public.setlist_settings enable row level security;
 create policy "setlist_settings select own" on public.setlist_settings for select to authenticated using (user_id = (select auth.uid()));
 create policy "setlist_settings insert own" on public.setlist_settings for insert to authenticated with check (user_id = (select auth.uid()));
 create policy "setlist_settings update own" on public.setlist_settings for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+
+-- Várias wishlists do Deku, cada uma com a sua plataforma (substitui deku_wishlist_url & co.)
+alter table public.setlist_settings add column deku_lists jsonb not null default '[]'::jsonb;
+alter table public.setlist_settings drop column deku_wishlist_url, drop column deku_synced_at, drop column deku_count, drop column deku_error;
