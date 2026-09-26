@@ -1,11 +1,11 @@
 // Service worker: app offline + cache das capas.
-const VERSION = 'setlist-v4';
+const VERSION = 'setlist-v5';
 const SHELL = [
   './',
   './index.html',
-  './styles.css?v=4',
-  './cloud.js?v=4',
-  './app.js?v=4',
+  './styles.css?v=5',
+  './cloud.js?v=5',
+  './app.js?v=5',
   './seed.json',
   './manifest.webmanifest',
   './icons/icon-192.png',
