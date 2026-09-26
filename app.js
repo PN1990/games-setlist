@@ -34,6 +34,7 @@ const ICON = {
   chev: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>',
   ext: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
   camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  barcode: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 8v8M10 8v8M12.5 8v8M15 8v8M17 8v8"/></svg>',
   wand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L15 9M14 4v2M19 9h2M17.5 5.5l1.5-1.5M12 8l4 4"/></svg>'
 };
 
@@ -540,7 +541,7 @@ function filteredGames(list) {
     if (ui.format === 'fav') arr = arr.filter(g => g.favorite);
     if (ui.status !== 'all') arr = arr.filter(g => (g.status || 'none') === ui.status);
   }
-  if (q) arr = arr.filter(g => norm(g.title).includes(q) || norm(g.developer).includes(q) || norm(g.publisher).includes(q) || norm(g.genres).includes(q));
+  if (q) arr = arr.filter(g => norm(g.title).includes(q) || norm(g.developer).includes(q) || norm(g.publisher).includes(q) || norm(g.genres).includes(q) || (g.ean && g.ean.includes(q)));
 
   const sort = list === 'wishlist' ? ui.wishSort : ui.sort;
   const byTitle = (a, b) => a.title.localeCompare(b.title, 'pt', { sensitivity: 'base', numeric: true });
@@ -587,6 +588,7 @@ function renderListTab(list) {
   return `
     <div class="page-head">
       <div><h1>${title}</h1><div class="sub">${sub}</div></div>
+      <div class="head-actions"><button class="icon-btn" data-action="scan" aria-label="Ler código de barras">${ICON.barcode}</button></div>
     </div>
     <div class="search">
       <div class="search-box">${ICON.search}
@@ -1004,6 +1006,7 @@ function detailHTML(g) {
     [isWish ? 'Preço alvo' : 'Preço pago', g.price != null ? fmtMoney(g.price) : ''],
     ['Comprado em', !isWish ? (g.purchaseDate ? fmtDate(g.purchaseDate) : '') : ''],
     ['Prioridade', isWish ? PRIORITIES[g.priority || 2] : ''],
+    ['EAN', g.ean || ''],
     ['Adicionado', fmtDate(g.addedAt)]
   ].filter(([, v]) => v);
 
@@ -1121,7 +1124,7 @@ function openEditor(g, opts = {}) {
   } else {
     sheet.open(html, () => { draft = null; render(); });
   }
-  if (opts.isNew) setTimeout(() => sheet.el.querySelector('#f-title')?.focus(), 350);
+  if (opts.isNew && !opts.noFocus) setTimeout(() => sheet.el.querySelector('#f-title')?.focus(), 350);
 }
 
 function refreshEditor() { sheet.replace(editorHTML()); }
@@ -1208,6 +1211,7 @@ function editorHTML() {
 
     <div class="group-title">Informação</div>
     <div class="group">
+      <div class="field"><label>EAN</label><input data-f="ean" type="text" inputmode="numeric" placeholder="código de barras" value="${esc(d.ean || '')}"></div>
       <div class="field"><label>Ano</label><input data-f="year" type="text" inputmode="numeric" placeholder="2025" value="${esc(d.year)}"></div>
       <div class="field"><label>Produtora</label><input data-f="developer" placeholder="Nintendo EPD" value="${esc(d.developer)}"></div>
       <div class="field"><label>Editora</label><input data-f="publisher" placeholder="Nintendo" value="${esc(d.publisher)}"></div>
@@ -1250,6 +1254,7 @@ async function saveDraft() {
   const dup = games.find(g => g.id !== draft.id && g.list === draft.list && g.platform === draft.platform && norm(g.title) === norm(draft.title));
   if (dup && editorState.isNew && !confirm(`Já tens “${dup.title}” (${PLATFORMS[dup.platform].name}) nesta lista. Adicionar mesmo assim?`)) return;
   lsSet('lastPlatform', draft.platform);
+  learnEan(draft);
   const saved = draft;
   await saveGame(saved);
   toast(editorState.isNew ? 'Jogo adicionado' : 'Guardado');
@@ -1494,6 +1499,196 @@ async function doBulk() {
   if (auto) autofill(added);
 }
 
+/* ---------------- Código de barras (EAN) ---------------- */
+
+const Scanner = {
+  reader: null,
+  last: '',
+  hits: 0,
+  busy: false,
+
+  async loadLib() {
+    if (window.ZXing) return;
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'vendor/zxing.min.js';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('Não foi possível carregar o leitor'));
+      document.head.appendChild(s);
+    });
+  },
+
+  async start() {
+    this.last = ''; this.hits = 0; this.busy = false;
+    const status = $('#scan-status');
+    try {
+      await this.loadLib();
+      const hints = new Map();
+      const F = ZXing.BarcodeFormat;
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E]);
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+      this.reader = new ZXing.BrowserMultiFormatReader(hints);
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      const video = $('#scan-video');
+      if (!video || !sheet.isOpen) { this.stop(); return; }
+      video.srcObject = this.stream;
+      await video.play().catch(() => {});
+      this.canvas = document.createElement('canvas');
+      this.timer = setInterval(() => this.tick(video), 200);
+      if (status) status.textContent = 'Aponta a câmara ao código de barras da caixa.';
+    } catch (err) {
+      console.warn('scanner', err);
+      this.stop();
+      if (status) {
+        status.textContent = err?.name === 'NotAllowedError'
+          ? 'Sem acesso à câmara. Autoriza a câmara para esta app (Definições → Safari → Câmara) ou escreve o código abaixo.'
+          : 'Não foi possível abrir a câmara. Escreve o código abaixo.';
+        status.style.color = '#ff3b30';
+      }
+    }
+  },
+
+  // Captura uma imagem da câmara e tenta ler o código
+  tick(video) {
+    if (this.busy || !this.reader || !video.videoWidth) return;
+    const scale = Math.min(1, 960 / video.videoWidth);
+    const c = this.canvas;
+    c.width = Math.round(video.videoWidth * scale);
+    c.height = Math.round(video.videoHeight * scale);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(video, 0, 0, c.width, c.height);
+    try {
+      const bitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(c)));
+      const res = this.reader.decodeBitmap(bitmap);
+      if (res) this.onCode(res.getText());
+    } catch { /* nenhum código nesta imagem */ }
+  },
+
+  stop() {
+    clearInterval(this.timer);
+    this.timer = null;
+    this.reader = null;
+    this.stream?.getTracks().forEach(t => t.stop());
+    this.stream = null;
+    const v = $('#scan-video');
+    if (v) v.srcObject = null;
+  },
+
+  // Aceita o código quando é lido 2 vezes seguidas (evita leituras erradas)
+  onCode(text) {
+    const code = normEan(text);
+    if (!code || this.busy) return;
+    if (code === this.last) this.hits++; else { this.last = code; this.hits = 1; }
+    if (this.hits >= 2) { this.busy = true; handleEan(code); }
+  }
+};
+
+function normEan(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.length === 12) d = '0' + d;
+  if (d.length !== 13 && d.length !== 8) return null;
+  const digits = d.split('').map(Number);
+  const check = digits.pop();
+  const sum = digits.reverse().reduce((s, n, i) => s + n * (i % 2 === 0 ? 3 : 1), 0);
+  return (10 - (sum % 10)) % 10 === check ? d : null;
+}
+
+function similarity(a, b) {
+  const tok = x => new Set(norm(x).replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean));
+  const A = tok(a), B = tok(b);
+  if (!A.size || !B.size) return 0;
+  let inter = 0;
+  A.forEach(t => { if (B.has(t)) inter++; });
+  return (2 * inter) / (A.size + B.size);
+}
+
+function openScanner() {
+  sheet.open(`${sheetHead('Ler código de barras', ['close', 'Fechar'], null)}
+  <div class="sheet-body">
+    <div class="scanner">
+      <video id="scan-video" playsinline muted autoplay></video>
+      <div class="scan-frame"><div class="scan-line"></div></div>
+    </div>
+    <div id="scan-status" class="hint" style="text-align:center">A abrir a câmara…</div>
+    <div class="group-title">Ou escreve o código</div>
+    <div class="title-input">
+      <input id="scan-manual" type="text" inputmode="numeric" placeholder="EAN (13 dígitos por baixo das barras)" autocomplete="off">
+      <button class="btn small" data-action="scan-manual">OK</button>
+    </div>
+    <div class="hint">Se já tiveres o jogo, a app mostra-o. Se não, descobre o nome e prepara-o para adicionares.</div>
+  </div>`, () => Scanner.stop());
+  Scanner.start();
+}
+
+async function handleEan(code) {
+  const status = $('#scan-status');
+  const setStatus = t => { if (status) { status.textContent = t; status.style.color = ''; } };
+  // 1) Já está associado a um jogo
+  const known = games.find(g => g.ean === code);
+  if (known) { Scanner.stop(); showOwned(known); return; }
+
+  // 2) Perguntar ao servidor que jogo é
+  setStatus(`Código ${code} — a procurar…`);
+  let info = null;
+  if (Cloud.loggedIn && navigator.onLine) {
+    try { info = await Cloud.lookupEan(code); } catch (err) { console.warn('ean', err); }
+  }
+  Scanner.stop();
+
+  // 3) Parece um jogo que já tens (sem EAN guardado)? Associa.
+  if (info?.title) {
+    let best = null, bestScore = 0;
+    for (const g of games) {
+      if (info.platform && g.platform !== info.platform) continue;
+      const sc = similarity(info.title, g.title);
+      if (sc > bestScore) { best = g; bestScore = sc; }
+    }
+    if (best && bestScore >= 0.75 && confirm(`Encontrei “${best.title}” (${PLATFORMS[best.platform]?.name}) na tua ${best.list === 'wishlist' ? 'wishlist' : 'coleção'}. É este jogo?`)) {
+      best.ean = code;
+      await saveGame(best);
+      showOwned(best);
+      return;
+    }
+  }
+
+  // 4) Jogo novo → abrir o editor já preenchido
+  const g = blankGame(ui.tab === 'wishlist' ? 'wishlist' : 'collection');
+  Object.assign(g, {
+    title: info?.title || '',
+    platform: info?.platform || g.platform,
+    physical: true, digital: false,
+    ean: code, eanTitle: info?.title || null, eanPlatform: info?.platform || null
+  });
+  openEditor(g, { isNew: true, noFocus: !!info?.title });
+  if (info?.title) {
+    toast(`📦 ${info.title}`, 2500);
+    searchInfo();
+  } else {
+    toast(Cloud.loggedIn ? 'Não encontrei este código — escreve o nome do jogo' : 'Entra na conta para identificar códigos automaticamente', 3500);
+  }
+}
+
+function showOwned(g) {
+  sheet.close();
+  openDetail(g.id);
+  toast(g.list === 'wishlist' ? '💭 Este jogo está na tua wishlist' : `✓ Já tens este jogo (${formatLabel(g)})`, 3000);
+}
+
+// Ensinar ao servidor o nome certo de um código lido (se foi corrigido ou era desconhecido)
+function learnEan(d) {
+  const ean = normEan(d.ean);
+  if (d.ean && !ean) d.ean = String(d.ean).replace(/\D/g, '');
+  else if (ean) d.ean = ean;
+  if (ean && Cloud.loggedIn && 'eanTitle' in d && (norm(d.title) !== norm(d.eanTitle || '') || (d.eanPlatform && d.eanPlatform !== d.platform) || !d.eanTitle)) {
+    Cloud.lookupEan(ean, { title: d.title, platform: d.platform }).catch(() => {});
+  }
+  delete d.eanTitle;
+  delete d.eanPlatform;
+}
+
 /* ---------------- Lista inicial ---------------- */
 
 const SEED_COUNT = 143;
@@ -1677,6 +1872,14 @@ async function handleAction(el) {
     case 'search-info': await searchInfo(); break;
     case 'pick-result': await pickResult(parseInt(el.dataset.i, 10)); break;
     case 'close-results': editorState.results = null; refreshEditor(); break;
+    case 'scan': openScanner(); break;
+    case 'scan-manual': {
+      const code = normEan($('#scan-manual')?.value);
+      if (!code) { toast('Código inválido — confirma os dígitos'); break; }
+      Scanner.busy = true;
+      handleEan(code);
+      break;
+    }
     case 'cover-photo': $('#file-cover').click(); break;
     case 'cover-url': {
       const url = prompt('Cola o endereço (URL) da imagem da capa:', draft.cover && !draft.cover.startsWith('data:') ? draft.cover : '');
