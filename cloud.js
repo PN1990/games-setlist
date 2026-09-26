@@ -14,9 +14,9 @@ class CloudError extends Error {
 }
 
 const AUTH_MESSAGES = {
-  invalid_credentials: 'Email ou palavra-passe errados.',
+  invalid_credentials: 'Email ou palavra-passe errados. (Se usas a fatura-ai, a conta e a palavra-passe são as mesmas.)',
   email_not_confirmed: 'Ainda não confirmaste o email. Abre o link que te enviámos.',
-  user_already_exists: 'Já existe uma conta com este email. Usa “Entrar”.',
+  user_already_exists: 'Já existe uma conta com este email (por exemplo, da fatura-ai). Usa “Entrar” com essa palavra-passe.',
   weak_password: 'A palavra-passe é demasiado fraca (mínimo 6 caracteres).',
   over_email_send_rate_limit: 'Demasiados emails enviados. Tenta daqui a alguns minutos.',
   validation_failed: 'Verifica o email e a palavra-passe.'
@@ -73,6 +73,11 @@ const Cloud = {
   async signUp(email, password) {
     const j = await this._auth(`signup?redirect_to=${encodeURIComponent(APP_URL)}`, { email, password });
     if (j.access_token) { this._storeTokenResponse(j); return { confirm: false }; }
+    // O Supabase não revela se o email já existe: devolve um utilizador sem identidades e não envia email
+    const u = j.user || j;
+    if (Array.isArray(u.identities) && u.identities.length === 0) {
+      throw new CloudError('Já existe uma conta com este email (por exemplo, da fatura-ai). Usa “Entrar” com essa palavra-passe.', 400, 'user_already_exists');
+    }
     return { confirm: true };
   },
 
