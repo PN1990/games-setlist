@@ -171,6 +171,19 @@ const Cloud = {
     await this.request('/auth/v1/user', { method: 'PUT', body: { password } });
   },
 
+  async getSettings() {
+    const rows = await this.request('/rest/v1/setlist_settings?select=*');
+    return rows?.[0] || null;
+  },
+
+  async saveSettings(values) {
+    await this.request('/rest/v1/setlist_settings?on_conflict=user_id', {
+      method: 'POST',
+      body: { user_id: this.user?.id, ...values, updated_at: new Date().toISOString() },
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }
+    });
+  },
+
   async fetchPrices() {
     return (await this.request('/rest/v1/setlist_prices?select=*')) || [];
   },

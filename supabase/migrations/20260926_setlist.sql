@@ -61,3 +61,17 @@ select cron.schedule('setlist-prices-daily', '13 7 * * *', $$
     headers := jsonb_build_object('Content-Type','application/json','x-cron-secret',(select value from setlist_private.config where key='cron_secret')),
     body := '{}'::jsonb, timeout_milliseconds := 120000);
 $$);
+
+-- Definições por utilizador (link da wishlist do Deku Deals, sincronizada pela edge function)
+create table public.setlist_settings (
+  user_id uuid primary key default auth.uid() references auth.users(id) on delete cascade,
+  deku_wishlist_url text,
+  deku_synced_at timestamptz,
+  deku_count int,
+  deku_error text,
+  updated_at timestamptz not null default now()
+);
+alter table public.setlist_settings enable row level security;
+create policy "setlist_settings select own" on public.setlist_settings for select to authenticated using (user_id = (select auth.uid()));
+create policy "setlist_settings insert own" on public.setlist_settings for insert to authenticated with check (user_id = (select auth.uid()));
+create policy "setlist_settings update own" on public.setlist_settings for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));

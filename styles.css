@@ -376,3 +376,5 @@ textarea.bulk {
 
 .toast.top { top: calc(var(--safe-top) + 10px); bottom: auto; transform: translate(-50%, -20px); font-size: 13px; padding: 7px 14px; }
 .toast.top.show { transform: translate(-50%, 0); }
+
+.cover img.sq, .row .thumb img.sq { object-fit: contain; background: #1c1c1e; }

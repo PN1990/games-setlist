@@ -6,7 +6,7 @@ App PWA estática (GitHub Pages) para a coleção de jogos Nintendo do Pedro. Ve
 - A Setlist usa o projeto Supabase **fatura-ai** (`rfkxxzovukosbosyqhuj`), partilhado com a app fatura-ai
   (o plano gratuito só permite 2 projetos ativos).
 - Tudo o que pertence à Setlist tem prefixo `setlist`. **Não apagar** ao trabalhar na fatura-ai:
-  - tabelas `public.setlist_games`, `public.setlist_prices`
+  - tabelas `public.setlist_games`, `public.setlist_prices`, `public.setlist_settings`
   - schema `setlist_private` (tabela `config` com o segredo do cron)
   - funções `public.setlist_verify_cron`, `public.setlist_touch`
   - edge function `setlist-prices`

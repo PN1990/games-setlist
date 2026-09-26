@@ -228,6 +228,7 @@ const Sync = {
       await this.push();
       const changed = await this.pull();
       await loadPrices();
+      await loadSettings();
       this.status = 'idle';
       this.error = '';
       this.lastSync = new Date().toISOString();
@@ -332,6 +333,32 @@ function timeAgo(iso) {
 /* ---------------- Preços da eShop ---------------- */
 
 let prices = lsGet('prices', {});
+let settings = lsGet('settings', null);
+
+const DEKU_RE = /^https?:\/\/(?:www\.)?dekudeals\.com\/wishlist\/[a-z0-9]+/i;
+
+async function loadSettings() {
+  if (!Cloud.loggedIn) return;
+  settings = await Cloud.getSettings();
+  lsSet('settings', settings);
+}
+
+async function linkDeku() {
+  const cur = settings?.deku_wishlist_url || '';
+  const url = prompt('Cola o link público da tua wishlist do Deku Deals\n(ex.: https://www.dekudeals.com/wishlist/abc123)\n\nDeixa vazio para desligar.', cur);
+  if (url == null) return;
+  const clean = url.trim();
+  if (clean && !DEKU_RE.test(clean)) { toast('Esse link não parece uma wishlist do Deku Deals'); return; }
+  try {
+    await Cloud.saveSettings({ deku_wishlist_url: clean.match(DEKU_RE)?.[0] || null, deku_error: null });
+    await loadSettings();
+    render();
+    if (clean) { toast('Wishlist do Deku ligada ✓'); refreshPricesNow(true); }
+    else toast('Wishlist do Deku desligada');
+  } catch (err) {
+    toast('Erro: ' + err.message);
+  }
+}
 let lastPriceCall = 0;
 let priceRefreshRunning = false;
 
@@ -372,9 +399,12 @@ async function refreshPricesNow(manual = true) {
   try {
     if (Sync.dirty.size || Sync.deleted.size) await Sync.push();
     const r = await Cloud.refreshPrices();
+    await Sync.pull();
     await loadPrices();
+    await loadSettings();
     refreshAfterSync();
-    if (manual) toast(r?.on_sale ? `Preços atualizados · ${r.on_sale} em promoção 🎉` : 'Preços atualizados');
+    const added = Object.values(r?.deku || {}).reduce((n, d) => n + (d.added || 0), 0);
+    if (manual) toast([added ? `${added} jogos novos do Deku` : '', r?.on_sale ? `${r.on_sale} em promoção 🎉` : 'Preços atualizados'].filter(Boolean).join(' · '), 3000);
   } catch (err) {
     if (manual) toast('Não foi possível atualizar os preços');
     console.warn('prices', err);
@@ -391,9 +421,16 @@ function formatLabel(g) {
 
 /* ---------------- Capas ---------------- */
 
+function coverSrc(g) {
+  if (g.cover) return { src: g.cover, square: false };
+  const e = priceOf(g)?.eshop_image;
+  return e ? { src: e, square: true } : null;
+}
+
 function coverHTML(g, extra = '') {
   const p = PLATFORMS[g.platform] || PLATFORMS.switch;
-  const img = g.cover ? `<img src="${esc(g.cover)}" alt="" loading="lazy" onerror="this.remove()">` : '';
+  const c = coverSrc(g);
+  const img = c ? `<img src="${esc(c.src)}" alt="" loading="lazy" class="${c.square ? 'sq' : ''}" onerror="this.remove()">` : '';
   return `<div class="cover ${extra}">
     <div class="ph" style="background:linear-gradient(160deg, ${p.color}, #1c1c1e)">${esc(g.title)}</div>
     ${img}
@@ -580,7 +617,8 @@ function cardHTML(g) {
 function rowHTML(g) {
   const p = PLATFORMS[g.platform] || PLATFORMS.switch;
   const st = STATUSES[g.status] || STATUSES.none;
-  const img = g.cover ? `<img src="${esc(g.cover)}" alt="" loading="lazy" onerror="this.remove()">` : '';
+  const c = coverSrc(g);
+  const img = c ? `<img src="${esc(c.src)}" alt="" loading="lazy" class="${c.square ? 'sq' : ''}" onerror="this.remove()">` : '';
   let meta = platPill(g) + formatPills(g);
   if (g.list === 'collection' && g.status && g.status !== 'none') meta += `<span style="color:${st.color};font-weight:600">● ${st.name}</span>`;
   if (g.list === 'wishlist') {
@@ -735,9 +773,18 @@ async function logout() {
   Sync.reset();
   prices = {};
   lsSet('prices', {});
+  settings = null;
+  lsSet('settings', null);
   lsSet('skipLogin', true);
   render();
   toast('Sessão terminada');
+}
+
+function dekuLabel() {
+  if (!settings?.deku_wishlist_url) return 'Ligar';
+  if (settings.deku_error) return 'Erro — toca para verificar';
+  if (!settings.deku_synced_at) return 'Ligada · a aguardar';
+  return `Ligada · ${settings.deku_count ?? 0} jogos · ${timeAgo(settings.deku_synced_at)}`;
 }
 
 function renderAccount() {
@@ -751,9 +798,10 @@ function renderAccount() {
       <div class="link-row" style="color:var(--text)"><span>${esc(Cloud.user?.email || '')}</span></div>
       <button class="link-row" data-action="sync-now"><span>Sincronizar agora</span><span class="d" id="sync-status">${esc(syncLabel())}</span></button>
       <button class="link-row" data-action="refresh-prices"><span>Atualizar preços da wishlist</span>${ICON.chev}</button>
+      <button class="link-row" data-action="deku-link"><span>Wishlist do Deku Deals</span><span class="d">${esc(dekuLabel())}</span></button>
       <button class="link-row danger" data-action="logout"><span>Terminar sessão</span></button>
     </div>
-    <div class="hint">Os preços da eShop (Portugal) dos jogos da wishlist de Switch e Switch 2 são atualizados automaticamente todos os dias.</div>`;
+    <div class="hint">Os preços da eShop (Portugal) dos jogos da wishlist de Switch e Switch 2 são atualizados automaticamente todos os dias. Se ligares a tua wishlist do Deku Deals, os jogos que lá adicionares (ou removeres) passam também para a wishlist da Setlist.</div>`;
 }
 
 function renderMore() {
@@ -960,7 +1008,8 @@ function detailHTML(g) {
         : '<button class="link-row" data-action="move" data-v="wishlist"><span>Passar para a wishlist</span></button>'}
       <button class="link-row" data-action="duplicate"><span>Duplicar (ex.: outra plataforma)</span></button>
       ${g.wikiUrl ? `<a class="link-row" href="${esc(g.wikiUrl)}" target="_blank" rel="noopener"><span>Abrir na Wikipedia</span>${ICON.ext}</a>` : ''}
-      ${g.platform !== '3ds' ? `<a class="link-row" href="https://www.dekudeals.com/search?q=${encodeURIComponent(g.title)}" target="_blank" rel="noopener"><span>Ver preços no Deku Deals</span>${ICON.ext}</a>` : ''}
+      ${g.dekuLink ? `<a class="link-row" href="${esc(g.dekuLink)}?country=pt" target="_blank" rel="noopener"><span>Ver no Deku Deals</span>${ICON.ext}</a>`
+        : g.platform !== '3ds' ? `<a class="link-row" href="https://www.dekudeals.com/search?q=${encodeURIComponent(g.title)}" target="_blank" rel="noopener"><span>Ver preços no Deku Deals</span>${ICON.ext}</a>` : ''}
       <button class="link-row danger" data-action="delete"><span>Apagar jogo</span></button>
     </div>
   </div>`;
@@ -1594,6 +1643,7 @@ async function handleAction(el) {
     case 'logout': await logout(); break;
     case 'sync-now': Sync.run(); break;
     case 'refresh-prices': refreshPricesNow(true); break;
+    case 'deku-link': await linkDeku(); break;
 
     // Mais
     case 'seed': await loadSeed(); break;
