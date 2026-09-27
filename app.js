@@ -1180,6 +1180,7 @@ function editorHTML() {
       <button class="btn small" data-action="search-info">${ICON.wand}Info</button>
     </div>
     <div class="hint">Toca em “Info” para ir buscar capa, descrição e dados à Wikipedia.</div>
+    ${d.ean && !d.title ? `<button class="btn secondary small" style="margin-top:8px" data-action="ean-retry">${ICON.barcode}Procurar outra vez pelo código ${esc(d.ean)}</button>` : ''}
     ${results}
 
     <div class="group-title">Lista</div>
@@ -1653,7 +1654,11 @@ async function handleEan(code) {
   setStatus(`Código ${code} — a procurar…`);
   let info = null;
   if (Cloud.loggedIn && navigator.onLine) {
-    try { info = await Cloud.lookupEan(code); } catch (err) { console.warn('ean', err); }
+    // 2 tentativas: as lojas às vezes falham temporariamente
+    for (let i = 0; i < 2 && !info?.title; i++) {
+      if (i) { setStatus(`Código ${code} — a tentar outra vez…`); await new Promise(r => setTimeout(r, 1500)); }
+      try { info = await Cloud.lookupEan(code); } catch (err) { console.warn('ean', err); }
+    }
   }
   Scanner.stop();
 
@@ -1918,6 +1923,22 @@ async function handleAction(el) {
     case 'pick-result': await pickResult(parseInt(el.dataset.i, 10)); break;
     case 'close-results': editorState.results = null; refreshEditor(); break;
     case 'scan': openScanner(); break;
+    case 'ean-retry': {
+      if (!Cloud.loggedIn) { toast('Entra na conta para identificar códigos'); break; }
+      toast('A procurar…', 8000);
+      try {
+        const info = await Cloud.lookupEan(draft.ean);
+        if (info?.title) {
+          Object.assign(draft, { title: info.title, platform: info.platform || draft.platform, eanTitle: info.title, eanPlatform: info.platform || null });
+          if (info.image && !draft.cover) draft.cover = info.image;
+          const cex = cexFrom(info); if (cex) draft.cex = cex;
+          refreshEditor();
+          toast(`📦 ${info.title}`);
+          searchInfo();
+        } else toast('Continua sem resultados — escreve o nome');
+      } catch { toast('Erro ao procurar'); }
+      break;
+    }
     case 'scan-manual': {
       const code = normEan($('#scan-manual')?.value);
       if (!code) { toast('Código inválido — confirma os dígitos'); break; }
