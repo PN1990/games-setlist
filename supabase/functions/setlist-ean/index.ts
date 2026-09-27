@@ -56,21 +56,39 @@ function cleanTitle(t: string): string {
 type Cex = { name: string; category: string; sell: number | null; exchange: number | null; cash: number | null; currency: string; image: string | null; url: string };
 
 // A CeX usa o código de barras como identificador dos jogos
+const CEX_HEADERS = {
+  Accept: 'application/json, text/plain, */*',
+  'Accept-Language': 'pt-PT,pt;q=0.9,en;q=0.8',
+  'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
+};
+
 async function lookupCex(ean: string): Promise<Cex | null> {
   for (const [cc, currency, site] of [['pt', 'EUR', 'pt.webuy.com'], ['uk', 'GBP', 'uk.webuy.com']]) {
-    try {
-      const r = await fetch(`https://wss2.cex.${cc}.webuy.io/v3/boxes/${ean}/detail`, { headers: { Accept: 'application/json' } });
-      if (!r.ok) continue;
-      const j = await r.json();
-      const b = j.response?.data?.boxDetails?.[0];
-      if (!b?.boxName) continue;
-      return {
-        name: b.boxName, category: b.categoryName || '',
-        sell: b.sellPrice ?? null, exchange: b.exchangePrice ?? null, cash: b.cashPrice ?? null,
-        currency, image: b.imageUrls?.large ? encodeURI(b.imageUrls.large) : null,
-        url: `https://${site}/product-detail?id=${ean}`
-      };
-    } catch (e) { console.warn('cex', cc, e); }
+    // 2 tentativas: a CeX às vezes recusa pedidos de servidores
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await fetch(`https://wss2.cex.${cc}.webuy.io/v3/boxes/${ean}/detail`, {
+          headers: { ...CEX_HEADERS, Origin: `https://${site}`, Referer: `https://${site}/` }
+        });
+        if (!r.ok) {
+          console.warn('cex', cc, ean, 'HTTP', r.status);
+          await new Promise(res => setTimeout(res, 700));
+          continue;
+        }
+        const j = await r.json();
+        const b = j.response?.data?.boxDetails?.[0];
+        if (!b?.boxName) break; // a CeX respondeu mas não conhece este código
+        return {
+          name: b.boxName, category: b.categoryName || '',
+          sell: b.sellPrice ?? null, exchange: b.exchangePrice ?? null, cash: b.cashPrice ?? null,
+          currency, image: b.imageUrls?.large ? encodeURI(b.imageUrls.large) : null,
+          url: `https://${site}/product-detail?id=${ean}`
+        };
+      } catch (e) {
+        console.warn('cex', cc, ean, String(e));
+        await new Promise(res => setTimeout(res, 700));
+      }
+    }
   }
   return null;
 }
@@ -129,7 +147,7 @@ Deno.serve(async req => {
     if (!raw) {
       try { raw = await lookupOpenProducts(ean); if (raw) source = 'openproductsfacts'; } catch (e) { console.warn('opf', e); }
     }
-    if (!raw) return json({ ean, title: null });
+    if (!raw) { console.warn('ean não encontrado', ean); return json({ ean, title: null }); }
 
     const result = { ean, title: cleanTitle(raw), platform: detectPlatform(raw), raw, source };
     await admin.from('setlist_ean').upsert({ ean, title: result.title, platform: result.platform, raw_title: raw, source });
