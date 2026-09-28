@@ -982,6 +982,13 @@ function refreshDetail() {
   if (g) sheet.replace(detailHTML(g));
 }
 
+// Página do produto na Zwame (se guardada) ou pesquisa pelo nome do jogo
+function zwameUrl(g) {
+  if (g.zwameUrl) return g.zwameUrl;
+  const q = norm(g.title).replace(/[^a-z0-9]+/g, ' ').trim();
+  return `https://comparador.zwame.pt/pesquisa/${encodeURIComponent(q)}`;
+}
+
 function hltbUrl(g) {
   return g.hltbId
     ? `https://howlongtobeat.com/game/${encodeURIComponent(g.hltbId)}`
@@ -1072,6 +1079,7 @@ function detailHTML(g) {
         : '<button class="link-row" data-action="move" data-v="wishlist"><span>Passar para a wishlist</span></button>'}
       <button class="link-row" data-action="duplicate"><span>Duplicar (ex.: outra plataforma)</span></button>
       ${g.wikiUrl ? `<a class="link-row" href="${esc(g.wikiUrl)}" target="_blank" rel="noopener"><span>Abrir na Wikipedia</span>${ICON.ext}</a>` : ''}
+      <a class="link-row" href="${esc(zwameUrl(g))}" target="_blank" rel="noopener"><span>${g.zwameUrl ? 'Comparar preços na Zwame' : 'Procurar preços na Zwame'}</span>${ICON.ext}</a>
       ${g.dekuLink ? `<a class="link-row" href="${esc(g.dekuLink)}?country=pt" target="_blank" rel="noopener"><span>Ver no Deku Deals</span>${ICON.ext}</a>`
         : g.platform !== '3ds' ? `<a class="link-row" href="https://www.dekudeals.com/search?q=${encodeURIComponent(g.title)}" target="_blank" rel="noopener"><span>Ver preços no Deku Deals</span>${ICON.ext}</a>` : ''}
       <button class="link-row danger" data-action="delete"><span>Apagar jogo</span></button>
@@ -1231,6 +1239,7 @@ function editorHTML() {
 
     <div class="group-title">Informação</div>
     <div class="group">
+      <div class="field"><label>Link Zwame</label><input data-f="zwameUrl" type="url" autocapitalize="none" placeholder="opcional: página do produto" value="${esc(d.zwameUrl || '')}"></div>
       <div class="field"><label>EAN</label><input data-f="ean" type="text" inputmode="numeric" placeholder="código de barras" value="${esc(d.ean || '')}"></div>
       <div class="field"><label>Ano</label><input data-f="year" type="text" inputmode="numeric" placeholder="2025" value="${esc(d.year)}"></div>
       <div class="field"><label>Produtora</label><input data-f="developer" placeholder="Nintendo EPD" value="${esc(d.developer)}"></div>
@@ -1271,6 +1280,11 @@ async function saveDraft() {
   if (!draft) return;
   draft.title = (draft.title || '').trim();
   if (!draft.title) { toast('Escreve o nome do jogo'); sheet.el.querySelector('#f-title')?.focus(); return; }
+  draft.zwameUrl = (draft.zwameUrl || '').trim();
+  if (draft.zwameUrl && !/^https:\/\/comparador\.zwame\.pt\//.test(draft.zwameUrl)) {
+    toast('O link da Zwame tem de começar por https://comparador.zwame.pt/');
+    return;
+  }
   const dup = games.find(g => g.id !== draft.id && g.list === draft.list && g.platform === draft.platform && norm(g.title) === norm(draft.title));
   if (dup && editorState.isNew && !confirm(`Já tens “${dup.title}” (${PLATFORMS[dup.platform].name}) nesta lista. Adicionar mesmo assim?`)) return;
   lsSet('lastPlatform', draft.platform);
