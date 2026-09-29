@@ -4,6 +4,7 @@ App web (PWA) para gerir a coleção de jogos **Nintendo Switch**, **Switch 2** 
 
 ## Funcionalidades
 - Checklist da coleção com formato **Físico**, **Digital** ou **ambos**
+- **Encomendas**: jogos a caminho (loja, data prevista, atrasos) com botão “Chegou!” que passa para a coleção
 - **Wishlist** com prioridade e preço alvo, e botão “Já comprei” para passar para a coleção
 - **Conta (login)**: a coleção fica na nuvem (Supabase) e sincroniza entre dispositivos; funciona offline
 - **Preços da eShop (Portugal)** para a wishlist de Switch/Switch 2, atualizados automaticamente todos os dias:

@@ -18,4 +18,5 @@ App PWA estática (GitHub Pages) para a coleção de jogos Nintendo do Pedro. Ve
 - `cloud.js`: login e REST do Supabase sem dependências (chave publishable).
 - `app.js`: IndexedDB local + sincronização (`Sync`), preços (`priceOf`), leitor de EAN (`Scanner`, `handleEan`), UI.
 - `vendor/zxing.min.js`: @zxing/library 0.21.3 (UMD), carregado só quando se abre o leitor.
-- Ao mudar ficheiros da app, subir o `?v=` em `index.html` e a `VERSION` em `sw.js`.
+- Ao mudar ficheiros da app, subir **tudo junto**: o `?v=` em `index.html` e `sw.js`, a `VERSION` em `sw.js`,
+  `APP_VERSION` em `app.js` e `version.json` (a app compara-os para se recarregar sozinha no iPhone).

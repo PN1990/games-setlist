@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=10">
+  <link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body>
   <div id="app">
@@ -31,6 +31,10 @@
       <button data-tab="wishlist">
         <svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.6a4.3 4.3 0 0 1 7.5 2.7c0 5.6-7.5 10.2-7.5 10.2z"/></svg>
         <span>Wishlist</span>
+      </button>
+      <button data-tab="ordered">
+        <svg viewBox="0 0 24 24"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></svg>
+        <span>Encomendas</span>
       </button>
       <button data-tab="stats">
         <svg viewBox="0 0 24 24"><path d="M5 20V11M12 20V4M19 20v-6"/></svg>
@@ -50,7 +54,7 @@
   <input type="file" id="file-cover" accept="image/*" hidden>
   <input type="file" id="file-backup" accept="application/json,.json" hidden>
 
-  <script src="cloud.js?v=10"></script>
-  <script src="app.js?v=10"></script>
+  <script src="cloud.js?v=12"></script>
+  <script src="app.js?v=12"></script>
 </body>
 </html>
