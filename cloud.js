@@ -189,6 +189,15 @@ const Cloud = {
     });
   },
 
+  // Capas oficiais da Nintendo Europa: items = [{ id, title, platform }]
+  async findCovers(items) {
+    return (await this.request('/functions/v1/setlist-covers', { method: 'POST', body: { items } }))?.results || {};
+  },
+
+  async coverCandidates(query, platform) {
+    return (await this.request('/functions/v1/setlist-covers', { method: 'POST', body: { query, platform, candidates: true } }))?.covers || [];
+  },
+
   async fetchPrices() {
     return (await this.request('/rest/v1/setlist_prices?select=*')) || [];
   },

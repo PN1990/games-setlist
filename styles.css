@@ -118,7 +118,8 @@ img { display: block; }
   position: relative; width: 100%; aspect-ratio: 0.64; border-radius: 10px; overflow: hidden;
   background: var(--card-2); box-shadow: var(--shadow);
 }
-.cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.cover-bg, .row .thumb .cover-bg { position: absolute; inset: -12%; background-size: cover; background-position: center; filter: blur(14px) brightness(.75) saturate(1.2); }
 .cover .ph {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center;
   padding: 10px; font-weight: 700; font-size: 13px; line-height: 1.2; color: #fff;
@@ -142,7 +143,7 @@ img { display: block; }
 .row { display: flex; align-items: center; gap: 12px; padding: 9px 12px; width: 100%; text-align: left; position: relative; }
 .row + .row::before { content: ""; position: absolute; top: 0; left: 70px; right: 0; height: 1px; background: var(--sep); transform: scaleY(.5); }
 .row .thumb { width: 46px; height: 66px; border-radius: 6px; overflow: hidden; background: var(--card-2); flex: none; position: relative; }
-.row .thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.row .thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .row .thumb .ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 18px; }
 .row .info { flex: 1; min-width: 0; }
 .row .info .t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -377,7 +378,6 @@ textarea.bulk {
 .toast.top { top: calc(var(--safe-top) + 10px); bottom: auto; transform: translate(-50%, -20px); font-size: 13px; padding: 7px 14px; }
 .toast.top.show { transform: translate(-50%, 0); }
 
-.cover img.sq, .row .thumb img.sq { object-fit: contain; background: #1c1c1e; }
 
 /* ---------- Leitor de código de barras ---------- */
 .scanner { position: relative; background: #000; border-radius: var(--radius); overflow: hidden; aspect-ratio: 4 / 3; }
@@ -385,3 +385,9 @@ textarea.bulk {
 .scan-frame { position: absolute; left: 8%; right: 8%; top: 30%; bottom: 30%; border: 3px solid rgba(255,255,255,.9); border-radius: 12px; box-shadow: 0 0 0 999px rgba(0,0,0,.35); }
 .scan-line { position: absolute; left: 6px; right: 6px; top: 50%; height: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: scanline 1.6s ease-in-out infinite alternate; }
 @keyframes scanline { from { top: 12%; } to { top: 88%; } }
+
+/* ---------- Escolher capa ---------- */
+.cover-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
+.cover-opt { text-align: left; min-width: 0; }
+.cover-opt .l { font-size: 11.5px; color: var(--text-2); margin-top: 4px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cover-opt:active .cover { transform: scale(.96); }
