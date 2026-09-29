@@ -34,6 +34,7 @@ const ICON = {
   chev: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>',
   ext: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
   camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9M7.5 5.2l9 4.6"/></svg>',
   barcode: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 8v8M10 8v8M12.5 8v8M15 8v8M17 8v8"/></svg>',
   wand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L15 9M14 4v2M19 9h2M17.5 5.5l1.5-1.5M12 8l4 4"/></svg>'
 };
@@ -138,6 +139,7 @@ const ui = {
   status: 'all',
   sort: lsGet('sort', 'title'),
   wishSort: lsGet('wishSort', 'priority'),
+  orderSort: lsGet('orderSort', 'arrival'),
   view: lsGet('view', 'grid')
 };
 
@@ -519,6 +521,24 @@ function formatPills(g) {
   return s;
 }
 
+/* ---------------- Listas ---------------- */
+
+const LIST_TABS = ['collection', 'ordered', 'wishlist'];
+const isListTab = t => LIST_TABS.includes(t);
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+// Texto da chegada prevista de uma encomenda
+function arrivalLabel(g) {
+  if (!g.expectedDate) return { text: 'Sem data prevista', late: false };
+  const days = Math.round((Date.parse(g.expectedDate) - Date.parse(todayISO())) / 86400000);
+  if (days < 0) return { text: `Atrasado ${-days} ${days === -1 ? 'dia' : 'dias'}`, late: true };
+  if (days === 0) return { text: 'Chega hoje', late: false };
+  if (days === 1) return { text: 'Chega amanhã', late: false };
+  const [, m, d] = g.expectedDate.split('-').map(Number);
+  const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  return { text: `Chega a ${d} ${MESES[m - 1]}`, late: false };
+}
+
 /* ---------------- Render principal ---------------- */
 
 const showLogin = () => ui.tab === 'login' || (!Cloud.loggedIn && !lsGet('skipLogin', false));
@@ -527,10 +547,10 @@ function render() {
   const login = showLogin();
   document.querySelectorAll('#tabbar button').forEach(b => b.classList.toggle('active', b.dataset.tab === ui.tab));
   $('#tabbar').hidden = login;
-  $('#fab').hidden = login || !(ui.tab === 'collection' || ui.tab === 'wishlist');
+  $('#fab').hidden = login || !isListTab(ui.tab);
   const v = $('#view');
   if (login) v.innerHTML = renderLogin();
-  else if (ui.tab === 'collection' || ui.tab === 'wishlist') v.innerHTML = renderListTab(ui.tab);
+  else if (isListTab(ui.tab)) v.innerHTML = renderListTab(ui.tab);
   else if (ui.tab === 'stats') v.innerHTML = renderStats();
   else v.innerHTML = renderMore();
 }
@@ -548,7 +568,7 @@ function filteredGames(list) {
   }
   if (q) arr = arr.filter(g => norm(g.title).includes(q) || norm(g.developer).includes(q) || norm(g.publisher).includes(q) || norm(g.genres).includes(q) || (g.ean && g.ean.includes(q)));
 
-  const sort = list === 'wishlist' ? ui.wishSort : ui.sort;
+  const sort = list === 'wishlist' ? ui.wishSort : list === 'ordered' ? ui.orderSort : ui.sort;
   const byTitle = (a, b) => a.title.localeCompare(b.title, 'pt', { sensitivity: 'base', numeric: true });
   const cmp = {
     title: byTitle,
@@ -559,25 +579,31 @@ function filteredGames(list) {
     hltb: (a, b) => (a.hltb?.main ?? 9999) - (b.hltb?.main ?? 9999) || byTitle(a, b),
     priority: (a, b) => (a.priority || 2) - (b.priority || 2) || byTitle(a, b),
     price: (a, b) => (priceOf(a)?.current_price ?? a.price ?? 99999) - (priceOf(b)?.current_price ?? b.price ?? 99999) || byTitle(a, b),
-    discount: (a, b) => (priceOf(b)?.discount_pct || 0) - (priceOf(a)?.discount_pct || 0) || byTitle(a, b)
+    discount: (a, b) => (priceOf(b)?.discount_pct || 0) - (priceOf(a)?.discount_pct || 0) || byTitle(a, b),
+    arrival: (a, b) => (a.expectedDate || '9999').localeCompare(b.expectedDate || '9999') || byTitle(a, b),
+    store: (a, b) => (a.store || '~').localeCompare(b.store || '~', 'pt') || byTitle(a, b)
   }[sort] || byTitle;
   return arr.sort(cmp);
 }
 
 function renderListTab(list) {
   const isWish = list === 'wishlist';
+  const isOrd = list === 'ordered';
   const all = games.filter(g => g.list === list);
   const arr = filteredGames(list);
-  const title = isWish ? 'Wishlist' : 'Coleção';
+  const title = isWish ? 'Wishlist' : isOrd ? 'Encomendas' : 'Coleção';
+  const ordTotal = all.reduce((t, g) => t + (g.price || 0), 0);
   const sub = isWish
     ? `${all.length} ${all.length === 1 ? 'jogo desejado' : 'jogos desejados'}`
-    : `${all.length} ${all.length === 1 ? 'jogo' : 'jogos'} · ${all.filter(g => g.physical).length} físicos · ${all.filter(g => g.digital).length} digitais`;
+    : isOrd
+      ? `${all.length} ${all.length === 1 ? 'jogo a caminho' : 'jogos a caminho'}${ordTotal ? ` · ${fmtMoney(ordTotal)}` : ''}${all.some(g => arrivalLabel(g).late) ? ' · ⚠️ atrasos' : ''}`
+      : `${all.length} ${all.length === 1 ? 'jogo' : 'jogos'} · ${all.filter(g => g.physical).length} físicos · ${all.filter(g => g.digital).length} digitais`;
 
   const platChips = [['all', 'Todas'], ...PLATFORM_KEYS.map(k => [k, PLATFORMS[k].name])]
     .map(([k, n]) => `<button class="chip ${ui.platform === k ? 'active' : ''}" data-action="filter-platform" data-v="${k}">${k !== 'all' ? `<span class="dot" style="background:${ui.platform === k ? '#fff' : PLATFORMS[k].color}"></span>` : ''}${n}</button>`).join('');
 
   let secondRow = '';
-  if (!isWish) {
+  if (list === 'collection') {
     const fmt = [['all', 'Todos'], ['physical', 'Físico'], ['digital', 'Digital'], ['both', 'Ambos'], ['fav', '★ Favoritos']]
       .map(([k, n]) => `<button class="chip ${ui.format === k ? 'active' : ''}" data-action="filter-format" data-v="${k}">${n}</button>`).join('');
     const st = Object.entries(STATUSES).filter(([k]) => k !== 'none')
@@ -587,8 +613,10 @@ function renderListTab(list) {
 
   const sortOpts = isWish
     ? [['priority', 'Prioridade'], ['title', 'Título'], ['recent', 'Recentes'], ['discount', 'Promoções'], ['price', 'Preço'], ['platform', 'Plataforma']]
-    : [['title', 'Título'], ['recent', 'Recentes'], ['platform', 'Plataforma'], ['year', 'Ano'], ['rating', 'Avaliação'], ['hltb', 'Duração']];
-  const curSort = isWish ? ui.wishSort : ui.sort;
+    : isOrd
+      ? [['arrival', 'Chegada'], ['title', 'Título'], ['store', 'Loja'], ['recent', 'Recentes'], ['platform', 'Plataforma']]
+      : [['title', 'Título'], ['recent', 'Recentes'], ['platform', 'Plataforma'], ['year', 'Ano'], ['rating', 'Avaliação'], ['hltb', 'Duração']];
+  const curSort = isWish ? ui.wishSort : isOrd ? ui.orderSort : ui.sort;
 
   return `
     <div class="page-head">
@@ -628,7 +656,14 @@ function updateResults() {
 function resultsHTML(list, all, arr) {
   const isWish = list === 'wishlist';
   let body;
-  if (!all.length) {
+  if (!all.length && list === 'ordered') {
+    body = `<div class="empty">
+      <div class="big">📦</div>
+      <h3>Sem encomendas</h3>
+      <div>Quando encomendares um jogo, adiciona-o aqui (ou carrega em “Encomendei” na wishlist). Quando chegar, passa-o para a coleção com um toque.</div>
+      <button class="btn" data-action="new">Adicionar encomenda</button>
+    </div>`;
+  } else if (!all.length) {
     body = `<div class="empty">
       <div class="big">${isWish ? '💭' : '🎮'}</div>
       <h3>${isWish ? 'A wishlist está vazia' : 'Ainda não tens jogos'}</h3>
@@ -661,7 +696,8 @@ function priceTag(g) {
 
 function cardHTML(g) {
   const st = STATUSES[g.status] || STATUSES.none;
-  const tag = g.list === 'wishlist' ? priceTag(g) : '';
+  const arr = g.list === 'ordered' ? arrivalLabel(g) : null;
+  const tag = g.list === 'wishlist' ? priceTag(g) : arr ? `<span class="${arr.late ? 'late' : ''}">${arr.text}</span>` : '';
   const extra = tag ? ` · ${tag}` : '';
   const sale = priceOf(g)?.discount_pct;
   return `<button class="card" data-action="open" data-id="${g.id}">
@@ -683,6 +719,11 @@ function rowHTML(g) {
   const img = coverImg(coverSrc(g));
   let meta = platPill(g) + formatPills(g);
   if (g.list === 'collection' && g.status && g.status !== 'none') meta += `<span style="color:${st.color};font-weight:600">● ${st.name}</span>`;
+  if (g.list === 'ordered') {
+    const a = arrivalLabel(g);
+    meta += `<span class="${a.late ? 'late' : ''}">📦 ${a.text}</span>`;
+    if (g.store) meta += `<span>${esc(g.store)}</span>`;
+  }
   if (g.list === 'wishlist') {
     meta += `<span>${PRIORITIES[g.priority || 2]}</span>`;
     const tag = priceTag(g);
@@ -744,7 +785,7 @@ function renderStats() {
     <div class="page-head"><div><h1>Estatísticas</h1><div class="sub">Um resumo da tua coleção</div></div></div>
     <div class="tiles">
       <div class="tile"><div class="v">${col.length}</div><div class="l">Jogos na coleção</div></div>
-      <div class="tile"><div class="v">${wish.length}</div><div class="l">Na wishlist</div></div>
+      <div class="tile"><div class="v">${wish.length}</div><div class="l">Na wishlist · ${games.filter(g => g.list === 'ordered').length} encomendados</div></div>
       <div class="tile"><div class="v">${phys}</div><div class="l">Físicos</div></div>
       <div class="tile"><div class="v">${dig}</div><div class="l">Digitais</div></div>
       <div class="tile"><div class="v">${both}</div><div class="l">Em ambos os formatos</div></div>
@@ -1003,6 +1044,7 @@ function hltbUrl(g) {
 function detailHTML(g) {
   if (!g) return '';
   const isWish = g.list === 'wishlist';
+  const isOrd = g.list === 'ordered';
   const st = g.status || 'none';
   const line1 = [g.year || (g.releaseDate || '').slice(0, 4), g.developer].filter(Boolean).join(' · ');
 
@@ -1018,7 +1060,7 @@ function detailHTML(g) {
     ['Editora', g.publisher],
     ['Género', g.genres],
     [isWish ? 'Preço alvo' : 'Preço pago', g.price != null ? fmtMoney(g.price) : ''],
-    ['Comprado em', !isWish ? (g.purchaseDate ? fmtDate(g.purchaseDate) : '') : ''],
+    ['Comprado em', !isWish && !isOrd ? (g.purchaseDate ? fmtDate(g.purchaseDate) : '') : ''],
     ['Prioridade', isWish ? PRIORITIES[g.priority || 2] : ''],
     ['EAN', g.ean || ''],
     ['Adicionado', fmtDate(g.addedAt)]
@@ -1031,7 +1073,7 @@ function detailHTML(g) {
     <div class="detail-hero">
       ${coverHTML(g)}
       <div class="meta">
-        <div class="pills">${platPill(g)}${isWish ? '<span class="pill" style="background:#ff2d55">Wishlist</span>' : ''}</div>
+        <div class="pills">${platPill(g)}${isWish ? '<span class="pill" style="background:#ff2d55">Wishlist</span>' : ''}${isOrd ? '<span class="pill" style="background:#ff9f0a">Encomendado</span>' : ''}</div>
         <h1>${esc(g.title)}</h1>
         ${line1 ? `<div class="line">${esc(line1)}</div>` : ''}
         ${g.genres ? `<div class="line">${esc(g.genres)}</div>` : ''}
@@ -1041,13 +1083,15 @@ function detailHTML(g) {
       </div>
     </div>
 
-    <div class="group-title" style="margin-top:22px">${isWish ? 'Formato desejado' : 'Tenho em'}</div>
+    ${isOrd ? orderHTML(g) : ''}
+
+    <div class="group-title" style="margin-top:22px">${isWish ? 'Formato desejado' : isOrd ? 'Formato encomendado' : 'Tenho em'}</div>
     <div class="toggles">
       <button class="toggle ${g.physical ? 'on' : ''}" data-action="toggle-format" data-v="physical">${ICON.cart}Físico</button>
       <button class="toggle ${g.digital ? 'on' : ''}" data-action="toggle-format" data-v="digital">${ICON.cloud}Digital</button>
     </div>
 
-    ${isWish ? '' : `
+    ${isWish || isOrd ? '' : `
     <div class="group-title">Estado</div>
     <div class="status-grid">${statusBtns}</div>
     <div class="group-title">A minha avaliação</div>
@@ -1080,8 +1124,11 @@ function detailHTML(g) {
     <div class="group-title">Ações</div>
     <div class="card-list">
       ${isWish
-        ? '<button class="link-row" data-action="move" data-v="collection"><span>✓ Já comprei — passar para a coleção</span></button>'
-        : '<button class="link-row" data-action="move" data-v="wishlist"><span>Passar para a wishlist</span></button>'}
+        ? `<button class="link-row" data-action="move" data-v="ordered"><span>🛒 Encomendei — passar para as encomendas</span></button>
+           <button class="link-row" data-action="move" data-v="collection"><span>✓ Já comprei — passar para a coleção</span></button>`
+        : isOrd
+          ? '<button class="link-row" data-action="move" data-v="wishlist"><span>Cancelar encomenda — voltar à wishlist</span></button>'
+          : '<button class="link-row" data-action="move" data-v="wishlist"><span>Passar para a wishlist</span></button>'}
       <button class="link-row" data-action="duplicate"><span>Duplicar (ex.: outra plataforma)</span></button>
       ${g.wikiUrl ? `<a class="link-row" href="${esc(g.wikiUrl)}" target="_blank" rel="noopener"><span>Abrir na Wikipedia</span>${ICON.ext}</a>` : ''}
       <a class="link-row" href="${esc(zwameUrl(g))}" target="_blank" rel="noopener"><span>${g.zwameUrl ? 'Comparar preços na Zwame' : 'Procurar preços na Zwame'}</span>${ICON.ext}</a>
@@ -1090,6 +1137,22 @@ function detailHTML(g) {
       <button class="link-row danger" data-action="delete"><span>Apagar jogo</span></button>
     </div>
   </div>`;
+}
+
+// Bloco da encomenda no detalhe: dados + botão "Chegou!"
+function orderHTML(g) {
+  const a = arrivalLabel(g);
+  const rows = [
+    ['Loja', g.store],
+    ['Encomendado em', g.orderDate ? fmtDate(g.orderDate) : ''],
+    ['Chegada prevista', g.expectedDate ? fmtDate(g.expectedDate) : ''],
+    ['Preço pago', g.price != null ? fmtMoney(g.price) : '']
+  ].filter(([, v]) => v);
+  return `<button class="btn block arrived-btn" style="margin-top:18px" data-action="arrived">${ICON.box}Chegou! Passar para a coleção</button>
+    <div class="group-title">Encomenda · <span class="${a.late ? 'late' : ''}" style="text-transform:none">${a.text}</span></div>
+    ${rows.length ? `<div class="kv">${rows.map(([k, v]) => `<div class="r"><span>${k}</span><span>${esc(v)}</span></div>`).join('')}</div>`
+      : '<div class="hint" style="margin-top:0">Em “Editar” podes guardar a loja, a data da encomenda e quando deve chegar.</div>'}
+    ${g.trackingUrl ? `<div class="card-list" style="margin-top:8px"><a class="link-row" href="${esc(g.trackingUrl)}" target="_blank" rel="noopener"><span>Seguir encomenda</span>${ICON.ext}</a></div>` : ''}`;
 }
 
 function cexHTML(g) {
@@ -1164,10 +1227,11 @@ function refreshEditor() { sheet.replace(editorHTML()); }
 function editorHTML() {
   const d = draft;
   const isWish = d.list === 'wishlist';
+  const isOrd = d.list === 'ordered';
   const es = editorState;
 
   const plat = PLATFORM_KEYS.map(k => `<button class="${d.platform === k ? 'active' : ''}" data-v="${k}" data-action="ed-platform">${PLATFORMS[k].name}</button>`).join('');
-  const lists = [['collection', 'Coleção'], ['wishlist', 'Wishlist']].map(([k, n]) => `<button class="${d.list === k ? 'active' : ''}" data-v="${k}" data-action="ed-list">${n}</button>`).join('');
+  const lists = [['collection', 'Coleção'], ['ordered', 'Encomenda'], ['wishlist', 'Wishlist']].map(([k, n]) => `<button class="${d.list === k ? 'active' : ''}" data-v="${k}" data-action="ed-list">${n}</button>`).join('');
   const statusOpts = Object.entries(STATUSES).map(([k, s]) => `<option value="${k}" ${d.status === k ? 'selected' : ''}>${s.name}</option>`).join('');
   const prioOpts = Object.entries(PRIORITIES).map(([k, n]) => `<option value="${k}" ${String(d.priority || 2) === k ? 'selected' : ''}>${n}</option>`).join('');
 
@@ -1202,7 +1266,7 @@ function editorHTML() {
     <div class="group-title">Plataforma</div>
     <div class="segmented plat">${plat}</div>
 
-    <div class="group-title">${isWish ? 'Formato desejado' : 'Formato que tenho'}</div>
+    <div class="group-title">${isWish ? 'Formato desejado' : isOrd ? 'Formato encomendado' : 'Formato que tenho'}</div>
     <div class="toggles">
       <button class="toggle ${d.physical ? 'on' : ''}" data-action="ed-format" data-v="physical">${ICON.cart}Físico</button>
       <button class="toggle ${d.digital ? 'on' : ''}" data-action="ed-format" data-v="digital">${ICON.cloud}Digital</button>
@@ -1220,9 +1284,15 @@ function editorHTML() {
       </div>
     </div>
 
-    <div class="group-title">${isWish ? 'Wishlist' : 'Progresso'}</div>
+    <div class="group-title">${isWish ? 'Wishlist' : isOrd ? 'Encomenda' : 'Progresso'}</div>
     <div class="group">
-      ${isWish ? `
+      ${isOrd ? `
+      <div class="field"><label>Loja</label><input data-f="store" placeholder="ex.: Worten, Amazon, FNAC" value="${esc(d.store || '')}"></div>
+      <div class="field"><label>Encomendado em</label><input data-f="orderDate" type="date" value="${esc(d.orderDate || '')}"></div>
+      <div class="field"><label>Chega a</label><input data-f="expectedDate" type="date" value="${esc(d.expectedDate || '')}"></div>
+      <div class="field"><label>Preço pago</label><input data-f="price" type="text" inputmode="decimal" placeholder="0,00" value="${d.price ?? ''}"><span class="unit">€</span></div>
+      <div class="field"><label>Seguimento</label><input data-f="trackingUrl" type="url" autocapitalize="none" placeholder="link (opcional)" value="${esc(d.trackingUrl || '')}"></div>
+      ` : isWish ? `
       <div class="field"><label>Prioridade</label><select data-f="priority">${prioOpts}</select></div>
       <div class="field"><label>Preço alvo</label><input data-f="price" type="text" inputmode="decimal" placeholder="avisa-me abaixo de…" value="${d.price ?? ''}"><span class="unit">€</span></div>
       ` : `
@@ -1587,7 +1657,7 @@ function openBulk() {
     <textarea class="bulk" id="bulk-text" placeholder="Um jogo por linha…"></textarea>
     <div class="group-title">Valores por omissão</div>
     <div class="group">
-      <div class="field"><label>Lista</label><select id="bulk-list"><option value="collection">Coleção</option><option value="wishlist">Wishlist</option></select></div>
+      <div class="field"><label>Lista</label><select id="bulk-list"><option value="collection">Coleção</option><option value="ordered">Encomendas</option><option value="wishlist">Wishlist</option></select></div>
       <div class="field"><label>Plataforma</label><select id="bulk-platform">${PLATFORM_KEYS.map(k => `<option value="${k}">${PLATFORMS[k].name}</option>`).join('')}</select></div>
       <div class="field"><label>Formato</label><select id="bulk-format"><option value="physical">Físico</option><option value="digital">Digital</option><option value="both">Ambos</option></select></div>
     </div>
@@ -1787,7 +1857,7 @@ async function handleEan(code) {
       const sc = similarity(info.title, g.title);
       if (sc > bestScore) { best = g; bestScore = sc; }
     }
-    if (best && bestScore >= 0.75 && confirm(`Encontrei “${best.title}” (${PLATFORMS[best.platform]?.name}) na tua ${best.list === 'wishlist' ? 'wishlist' : 'coleção'}. É este jogo?`)) {
+    if (best && bestScore >= 0.75 && confirm(`Encontrei “${best.title}” (${PLATFORMS[best.platform]?.name}) na tua ${{ wishlist: 'wishlist', ordered: 'lista de encomendas' }[best.list] || 'coleção'}. É este jogo?`)) {
       best.ean = code;
       if (best.list === 'collection' && !best.physical && confirm('Tens este jogo só em digital. Marcar que também o tens em físico?')) best.physical = true;
       const cex = cexFrom(info);
@@ -1800,7 +1870,7 @@ async function handleEan(code) {
   }
 
   // 4) Jogo novo → abrir o editor já preenchido
-  const g = blankGame(ui.tab === 'wishlist' ? 'wishlist' : 'collection');
+  const g = blankGame(isListTab(ui.tab) ? ui.tab : 'collection');
   Object.assign(g, {
     title: info?.title || '',
     platform: info?.platform || g.platform,
@@ -1841,7 +1911,7 @@ async function refreshCex(g) {
 function showOwned(g) {
   sheet.close();
   openDetail(g.id);
-  toast(g.list === 'wishlist' ? '💭 Este jogo está na tua wishlist' : `✓ Já tens este jogo (${formatLabel(g)})`, 3000);
+  toast(g.list === 'wishlist' ? '💭 Este jogo está na tua wishlist' : g.list === 'ordered' ? '📦 Encomendado — se já chegou, carrega em “Chegou!”' : `✓ Já tens este jogo (${formatLabel(g)})`, 3500);
 }
 
 // Ensinar ao servidor o nome certo de um código lido (se foi corrigido ou era desconhecido)
@@ -1972,7 +2042,12 @@ async function handleAction(el) {
 
     // Abrir / criar
     case 'open': openDetail(el.dataset.id); break;
-    case 'new': openEditor(blankGame(ui.tab === 'wishlist' ? 'wishlist' : 'collection'), { isNew: true }); break;
+    case 'new': {
+      const ng = blankGame(isListTab(ui.tab) ? ui.tab : 'collection');
+      if (ng.list === 'ordered') { ng.physical = true; ng.orderDate = todayISO(); }
+      openEditor(ng, { isNew: true });
+      break;
+    }
     case 'close': sheet.close(); break;
 
     // Detalhe
@@ -1990,17 +2065,27 @@ async function handleAction(el) {
       if (d) { d.classList.toggle('clamp'); el.textContent = d.classList.contains('clamp') ? 'Ler mais' : 'Ler menos'; }
       break;
     }
+    case 'arrived':
     case 'move':
       if (g) {
-        g.list = v;
-        if (v === 'collection') {
+        const target = a === 'arrived' ? 'collection' : v;
+        const from = g.list;
+        g.list = target;
+        if (target === 'collection') {
           if (!g.physical && !g.digital) g.physical = true;
           if (!g.status || g.status === 'none') g.status = 'backlog';
           g.addedAt = new Date().toISOString();
-          if (g.price != null && !g.purchaseDate) g.purchaseDate = new Date().toISOString().slice(0, 10);
+          if (from === 'ordered') g.purchaseDate = g.purchaseDate || g.orderDate || todayISO();
+          else if (g.price != null && !g.purchaseDate) g.purchaseDate = todayISO();
+        }
+        if (target === 'ordered') {
+          if (!g.physical && !g.digital) g.physical = true;
+          g.orderDate = g.orderDate || todayISO();
+          g.price = null; // na wishlist era o preço alvo
         }
         await saveGame(g);
-        toast(v === 'collection' ? 'Passou para a coleção 🎉' : 'Passou para a wishlist');
+        toast({ collection: from === 'ordered' ? 'Chegou! Já está na coleção 🎉' : 'Passou para a coleção 🎉', ordered: 'Passou para as encomendas 📦', wishlist: 'Passou para a wishlist' }[target]);
+        if (target === 'ordered') { openEditor(g, { fromDetail: true }); break; }
         refreshDetail();
       }
       break;
@@ -2035,7 +2120,8 @@ async function handleAction(el) {
     case 'ed-platform': draft.platform = v; refreshEditor(); break;
     case 'ed-list':
       draft.list = v;
-      if (v === 'collection' && !draft.physical && !draft.digital) draft.physical = true;
+      if ((v === 'collection' || v === 'ordered') && !draft.physical && !draft.digital) draft.physical = true;
+      if (v === 'ordered' && !draft.orderDate) draft.orderDate = todayISO();
       refreshEditor();
       break;
     case 'ed-format': draft[v] = !draft[v]; refreshEditor(); break;
@@ -2156,6 +2242,7 @@ function bindEvents() {
   document.addEventListener('change', e => {
     if (e.target.id === 'sort') {
       if (ui.tab === 'wishlist') { ui.wishSort = e.target.value; lsSet('wishSort', ui.wishSort); }
+      else if (ui.tab === 'ordered') { ui.orderSort = e.target.value; lsSet('orderSort', ui.orderSort); }
       else { ui.sort = e.target.value; lsSet('sort', ui.sort); }
       render();
       return;
@@ -2183,6 +2270,29 @@ function bindEvents() {
     e.target.value = '';
     if (f) importBackup(f);
   });
+}
+
+/* ---------------- Atualizações da app ---------------- */
+
+// Versão desta app; tem de ser igual à de version.json quando se publica uma versão nova
+const APP_VERSION = 12;
+
+// No iPhone a app fica aberta em segundo plano; ao voltar, confirma se há versão nova e recarrega
+async function checkForUpdate() {
+  if (location.protocol === 'file:' || !navigator.onLine) return;
+  try {
+    const r = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!r.ok) return;
+    const { version } = await r.json();
+    let tried = null;
+    try { tried = sessionStorage.getItem('reloadedFor'); } catch { /* ignorar */ }
+    if (version > APP_VERSION && String(version) !== tried && !sheet.isOpen && !draft) {
+      try { sessionStorage.setItem('reloadedFor', String(version)); } catch { /* ignorar */ }
+      try { (await navigator.serviceWorker?.getRegistration())?.update(); } catch { /* ignorar */ }
+      toast('A atualizar a app…', 2000);
+      setTimeout(() => location.reload(), 600);
+    }
+  } catch { /* offline ou sem ficheiro */ }
 }
 
 /* ---------------- Arranque ---------------- */
@@ -2215,6 +2325,8 @@ async function init() {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') Sync.schedule(200); });
   window.addEventListener('online', () => Sync.schedule(200));
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
+  checkForUpdate();
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW', err));
   }

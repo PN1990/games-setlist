@@ -1,11 +1,11 @@
 // Service worker: app offline + cache das capas.
-const VERSION = 'setlist-v10';
+const VERSION = 'setlist-v12';
 const SHELL = [
   './',
   './index.html',
-  './styles.css?v=10',
-  './cloud.js?v=10',
-  './app.js?v=10',
+  './styles.css?v=12',
+  './cloud.js?v=12',
+  './app.js?v=12',
   './seed.json',
   './manifest.webmanifest',
   './icons/icon-192.png',
@@ -30,10 +30,14 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Ficheiros da app: rede primeiro (para apanhar atualizações), cache se offline.
+  // Ficheiros da app: rede primeiro, sempre a confirmar com o servidor (no-cache)
+  // para apanhar atualizações logo; cache só se estiver offline.
   if (url.origin === location.origin) {
+    const net = req.mode === 'navigate'
+      ? fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' })
+      : fetch(req, { cache: 'no-cache' });
     e.respondWith(
-      fetch(req)
+      net
         .then(res => {
           const copy = res.clone();
           caches.open(VERSION).then(c => c.put(req, copy));
