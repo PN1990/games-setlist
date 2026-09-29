@@ -479,18 +479,23 @@ function formatLabel(g) {
 /* ---------------- Capas ---------------- */
 
 function coverSrc(g) {
-  if (g.cover) return { src: g.cover, square: false };
+  if (g.cover) return { src: g.cover };
   const e = priceOf(g)?.eshop_image;
-  return e ? { src: e, square: true } : null;
+  return e ? { src: e } : null;
+}
+
+// Imagem inteira (sem cortes) sobre um fundo desfocado da própria imagem
+function coverImg(c) {
+  if (!c) return '';
+  const u = esc(c.src);
+  return `<div class="cover-bg" style="background-image:url(&quot;${u}&quot;)"></div><img src="${u}" alt="" loading="lazy" onerror="this.previousElementSibling.remove();this.remove()">`;
 }
 
 function coverHTML(g, extra = '') {
   const p = PLATFORMS[g.platform] || PLATFORMS.switch;
-  const c = coverSrc(g);
-  const img = c ? `<img src="${esc(c.src)}" alt="" loading="lazy" class="${c.square ? 'sq' : ''}" onerror="this.remove()">` : '';
   return `<div class="cover ${extra}">
     <div class="ph" style="background:linear-gradient(160deg, ${p.color}, #1c1c1e)">${esc(g.title)}</div>
-    ${img}
+    ${coverImg(coverSrc(g))}
     <div class="plat-bar" style="background:${p.color}"></div>
   </div>`;
 }
@@ -675,8 +680,7 @@ function cardHTML(g) {
 function rowHTML(g) {
   const p = PLATFORMS[g.platform] || PLATFORMS.switch;
   const st = STATUSES[g.status] || STATUSES.none;
-  const c = coverSrc(g);
-  const img = c ? `<img src="${esc(c.src)}" alt="" loading="lazy" class="${c.square ? 'sq' : ''}" onerror="this.remove()">` : '';
+  const img = coverImg(coverSrc(g));
   let meta = platPill(g) + formatPills(g);
   if (g.list === 'collection' && g.status && g.status !== 'none') meta += `<span style="color:${st.color};font-weight:600">● ${st.name}</span>`;
   if (g.list === 'wishlist') {
@@ -873,6 +877,7 @@ function renderMore() {
     <div class="card-list">
       <button class="link-row" data-action="seed"><span>Carregar a minha lista inicial</span><span class="d">${SEED_COUNT} jogos</span></button>
       <button class="link-row" data-action="bulk"><span>Importar lista de jogos</span>${ICON.chev}</button>
+      <button class="link-row" data-action="upgrade-covers"><span>Atualizar capas (oficiais da Nintendo)</span>${ICON.chev}</button>
       <button class="link-row" data-action="autofill"><span>Preencher capas e info em falta</span><span class="d">${missing} sem capa</span></button>
     </div>
     <div class="group-title">Backup</div>
@@ -1187,7 +1192,7 @@ function editorHTML() {
       <input id="f-title" data-f="title" value="${esc(d.title)}" placeholder="Nome do jogo" autocomplete="off" enterkeyhint="search">
       <button class="btn small" data-action="search-info">${ICON.wand}Info</button>
     </div>
-    <div class="hint">Toca em “Info” para ir buscar capa, descrição e dados à Wikipedia.</div>
+    <div class="hint">Toca em “Info” para ir buscar a descrição e os dados (e a capa oficial da Nintendo).</div>
     ${d.ean && !d.title ? `<button class="btn secondary small" style="margin-top:8px" data-action="ean-retry">${ICON.barcode}Procurar outra vez pelo código ${esc(d.ean)}</button>` : ''}
     ${results}
 
@@ -1204,10 +1209,11 @@ function editorHTML() {
     </div>
 
     <div class="group-title">Capa</div>
+    ${coverResultsHTML()}
     <div class="cover-edit">
       ${coverHTML(d)}
       <div class="actions">
-        <button class="btn secondary small" data-action="search-info">${ICON.search}Procurar capa</button>
+        <button class="btn secondary small" data-action="cover-search">${ICON.search}Procurar capa</button>
         <button class="btn secondary small" data-action="cover-photo">${ICON.camera}Foto / galeria</button>
         <button class="btn ghost small" data-action="cover-url">Colar URL</button>
         ${d.cover ? '<button class="btn danger small" data-action="cover-remove">Remover</button>' : ''}
@@ -1301,6 +1307,93 @@ async function saveDraft() {
   } else {
     sheet.close();
   }
+}
+
+/* ---------------- Capas oficiais (Nintendo Europa) ---------------- */
+
+const NINTENDO_PLATFORMS = ['switch', 'switch2', '3ds'];
+const isWikiCover = g => g.coverSource === 'wiki' || (!g.coverSource && /wikimedia\.org|wikipedia\.org/.test(g.cover || ''));
+
+// Uma capa pode ser trocada automaticamente se veio da Wikipedia, se não existe,
+// ou se é a imagem quadrada da Nintendo e agora há foto da caixa
+function canUpgrade(g, found) {
+  if (!g.cover) return true;
+  if (isWikiCover(g)) return true;
+  if (g.coverSource === 'nintendo' && found.packshot && g.cover !== found.packshot) return true;
+  return false;
+}
+
+async function upgradeCovers(list, manual = false) {
+  if (!Cloud.loggedIn) { if (manual) toast('Entra na conta para ir buscar as capas oficiais'); return 0; }
+  if (upgradeCovers.running) return 0;
+  const todo = (list || games).filter(g => NINTENDO_PLATFORMS.includes(g.platform) && g.title && (manual ? canUpgrade(g, { packshot: 1 }) : !g.cover || isWikiCover(g)));
+  if (!todo.length) { if (manual) toast('As capas já estão todas atualizadas ✓'); return 0; }
+  upgradeCovers.running = true;
+  let changed = 0;
+  try {
+    for (let i = 0; i < todo.length; i += 25) {
+      toast(`🖼️ A buscar capas oficiais… ${Math.min(i + 25, todo.length)}/${todo.length}`, 60000, true);
+      const chunk = todo.slice(i, i + 25);
+      const res = await Cloud.findCovers(chunk.map(g => ({ id: g.id, title: g.title, platform: g.platform })));
+      const puts = [];
+      for (const g0 of chunk) {
+        const found = res[g0.id];
+        const g = getGame(g0.id);
+        if (!found || !g || !canUpgrade(g, found)) continue;
+        const src = found.packshot || found.square;
+        if (!src || src === g.cover) continue;
+        g.cover = src;
+        g.coverSource = 'nintendo';
+        g.updatedAt = new Date().toISOString();
+        puts.push(g);
+      }
+      if (puts.length) { await saveMany(puts); changed += puts.length; if (!sheet.isOpen) render(); }
+    }
+    toast(changed ? `${changed} capas trocadas pelas oficiais da Nintendo ✓` : 'Não encontrei capas melhores', 3500);
+  } catch (err) {
+    console.warn('covers', err);
+    if (manual) toast('Não foi possível ir buscar as capas');
+  }
+  upgradeCovers.running = false;
+  return changed;
+}
+
+// Editor: mostrar várias capas possíveis (Nintendo, CeX, Wikipedia) para escolher
+async function searchCovers() {
+  const t = (draft.title || '').trim();
+  if (!t) { toast('Escreve primeiro o nome do jogo'); return; }
+  editorState.coverResults = 'loading';
+  refreshEditor();
+  const out = [];
+  const seen = new Set();
+  const add = (src, label, source) => { if (src && !seen.has(src)) { seen.add(src); out.push({ src, label, source }); } };
+  if (Cloud.loggedIn && NINTENDO_PLATFORMS.includes(draft.platform)) {
+    try {
+      const covers = await Cloud.coverCandidates(t, draft.platform);
+      for (const c of covers) {
+        const plat = PLATFORMS[c.system]?.name || '';
+        add(c.packshot, `${c.title} · caixa ${plat}`, 'nintendo');
+        add(c.square, `${c.title} · ${plat}`, 'nintendo');
+      }
+    } catch (err) { console.warn('cover candidates', err); }
+  }
+  try {
+    const res = await wikiSearch(t);
+    res.filter(r => r.thumb).slice(0, 4).forEach(r => add(r.thumb, `${r.title} · Wikipedia`, 'wiki'));
+  } catch { /* ignorar */ }
+  editorState.coverResults = out;
+  refreshEditor();
+}
+
+function coverResultsHTML() {
+  const r = editorState.coverResults;
+  if (!r) return '';
+  if (r === 'loading') return '<div class="loading"><span class="spinner"></span>A procurar capas…</div>';
+  if (!r.length) return '<div class="hint" style="margin:0 0 10px">Não encontrei capas. Experimenta o nome em inglês ou tira uma foto à caixa.</div>';
+  return `<div class="cover-picker">${r.map((c, i) => `<button class="cover-opt" data-action="pick-cover" data-i="${i}" title="${esc(c.label)}">
+      <div class="cover">${coverImg(c)}</div><div class="l">${esc(c.label)}</div>
+    </button>`).join('')}</div>
+    <button class="btn ghost small" style="margin:0 0 12px" data-action="close-covers">Fechar opções</button>`;
 }
 
 /* ---------------- Wikipedia / Wikidata ---------------- */
@@ -1398,9 +1491,11 @@ async function wikiDetails(r) {
 }
 
 function applyInfo(g, info, overwrite = true) {
-  for (const k of ['cover', 'description', 'year', 'releaseDate', 'developer', 'publisher', 'genres', 'hltbId', 'wikiUrl']) {
+  for (const k of ['description', 'year', 'releaseDate', 'developer', 'publisher', 'genres', 'hltbId', 'wikiUrl']) {
     if (info[k] && (overwrite || !g[k])) g[k] = info[k];
   }
+  // A capa da Wikipedia só entra se não houver outra (é muitas vezes de outra plataforma)
+  if (info.cover && (!g.cover || (overwrite && g.coverSource === 'wiki'))) { g.cover = info.cover; g.coverSource = 'wiki'; }
 }
 
 async function searchInfo() {
@@ -1426,6 +1521,14 @@ async function pickResult(i) {
   try {
     const info = await wikiDetails(r);
     applyInfo(draft, info, true);
+    // Capa oficial da Nintendo para a plataforma escolhida, se existir
+    if (Cloud.loggedIn && NINTENDO_PLATFORMS.includes(draft.platform) && (!draft.cover || isWikiCover(draft))) {
+      try {
+        const found = (await Cloud.findCovers([{ id: draft.id, title: draft.title, platform: draft.platform }]))[draft.id];
+        const src = found?.packshot || found?.square;
+        if (src) { draft.cover = src; draft.coverSource = 'nintendo'; }
+      } catch { /* fica a da Wikipedia */ }
+    }
     toast('Informação preenchida');
   } catch (err) {
     toast('Erro ao carregar informação');
@@ -1689,7 +1792,7 @@ async function handleEan(code) {
       if (best.list === 'collection' && !best.physical && confirm('Tens este jogo só em digital. Marcar que também o tens em físico?')) best.physical = true;
       const cex = cexFrom(info);
       if (cex) best.cex = cex;
-      if (info.image && !best.cover) best.cover = info.image;
+      if (info.image && !best.cover) { best.cover = info.image; best.coverSource = 'cex'; }
       await saveGame(best);
       showOwned(best);
       return;
@@ -1702,7 +1805,7 @@ async function handleEan(code) {
     title: info?.title || '',
     platform: info?.platform || g.platform,
     physical: true, digital: false,
-    cover: info?.image || '', cex: cexFrom(info),
+    cover: info?.image || '', coverSource: info?.image ? 'cex' : undefined, cex: cexFrom(info),
     ean: code, eanTitle: info?.title || null, eanPlatform: info?.platform || null
   });
   openEditor(g, { isNew: true, noFocus: !!info?.title });
@@ -1729,7 +1832,7 @@ async function refreshCex(g) {
     const cex = cexFrom(info);
     if (!cex && !(info?.image && !fresh.cover)) return;
     if (cex) fresh.cex = cex;
-    if (info?.image && !fresh.cover) fresh.cover = info.image;
+    if (info?.image && !fresh.cover) { fresh.cover = info.image; fresh.coverSource = 'cex'; }
     await saveGame(fresh);
     if (currentDetailId === fresh.id && !draft) refreshDetail();
   } catch { /* ignorar */ }
@@ -1784,15 +1887,18 @@ let autofillRunning = false;
 
 async function autofill(list) {
   if (autofillRunning) { toast('Já está a correr'); return; }
-  const todo = (list || games).filter(g => !g.cover);
-  if (!todo.length) { toast('Todos os jogos já têm capa 🎉'); return; }
   if (!navigator.onLine) { toast('Estás offline'); return; }
+  // 1) Capas oficiais da Nintendo (Switch, Switch 2 e 3DS)
+  await upgradeCovers(list || games.filter(g => !g.cover));
+  // 2) Wikipedia para a descrição e dados (e capa, só se ainda não houver)
+  const todo = (list || games).filter(g => !getGame(g.id)?.cover || !getGame(g.id)?.description);
+  if (!todo.length) { toast('Todos os jogos já têm capa 🎉'); return; }
   autofillRunning = true;
   let ok = 0;
   for (let i = 0; i < todo.length; i++) {
     const g = getGame(todo[i].id);
     if (!g) continue;
-    toast(`🔎 A procurar capas… ${i + 1}/${todo.length}`, 60000, true);
+    toast(`🔎 A procurar informação… ${i + 1}/${todo.length}`, 60000, true);
     try {
       const res = await wikiSearch(g.title);
       const best = res.find(r => r.thumb && /video ?game/i.test(r.description)) || res.find(r => r.thumb);
@@ -1813,7 +1919,7 @@ async function autofill(list) {
   }
   autofillRunning = false;
   render();
-  toast(`Capas encontradas: ${ok}/${todo.length}. Confirma se estão certas!`, 4000);
+  toast(`Informação encontrada: ${ok}/${todo.length}. Confirma se está certa!`, 4000);
 }
 
 /* ---------------- Backup ---------------- */
@@ -1944,7 +2050,7 @@ async function handleAction(el) {
         const info = await Cloud.lookupEan(draft.ean);
         if (info?.title) {
           Object.assign(draft, { title: info.title, platform: info.platform || draft.platform, eanTitle: info.title, eanPlatform: info.platform || null });
-          if (info.image && !draft.cover) draft.cover = info.image;
+          if (info.image && !draft.cover) { draft.cover = info.image; draft.coverSource = 'cex'; }
           const cex = cexFrom(info); if (cex) draft.cex = cex;
           refreshEditor();
           toast(`📦 ${info.title}`);
@@ -1963,10 +2069,18 @@ async function handleAction(el) {
     case 'cover-photo': $('#file-cover').click(); break;
     case 'cover-url': {
       const url = prompt('Cola o endereço (URL) da imagem da capa:', draft.cover && !draft.cover.startsWith('data:') ? draft.cover : '');
-      if (url != null) { draft.cover = url.trim(); refreshEditor(); }
+      if (url != null) { draft.cover = url.trim(); draft.coverSource = 'url'; refreshEditor(); }
       break;
     }
-    case 'cover-remove': draft.cover = ''; refreshEditor(); break;
+    case 'cover-remove': draft.cover = ''; draft.coverSource = undefined; refreshEditor(); break;
+    case 'cover-search': await searchCovers(); break;
+    case 'pick-cover': {
+      const c = editorState.coverResults?.[parseInt(el.dataset.i, 10)];
+      if (c) { draft.cover = c.src; draft.coverSource = c.source; editorState.coverResults = null; refreshEditor(); toast('Capa escolhida'); }
+      break;
+    }
+    case 'close-covers': editorState.coverResults = null; refreshEditor(); break;
+    case 'upgrade-covers': upgradeCovers(null, true); break;
 
     // Conta
     case 'login-mode': ui.loginEmail = $('#login-email')?.value || ui.loginEmail; ui.loginMode = v; render(); break;
@@ -2060,7 +2174,7 @@ function bindEvents() {
     const f = e.target.files[0];
     e.target.value = '';
     if (!f || !draft) return;
-    try { draft.cover = await resizeImage(f); refreshEditor(); }
+    try { draft.cover = await resizeImage(f); draft.coverSource = 'photo'; refreshEditor(); }
     catch { toast('Não foi possível ler a imagem'); }
   });
 
@@ -2094,7 +2208,10 @@ async function init() {
     }
   }
   if (fromLink) await afterLogin();
-  else if (Cloud.loggedIn) Sync.run();
+  else if (Cloud.loggedIn) {
+    // Uma vez: trocar as capas antigas (Wikipedia) pelas oficiais da Nintendo
+    Sync.run().then(() => { if (!lsGet('coversV2', false)) { lsSet('coversV2', true); upgradeCovers(); } });
+  }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') Sync.schedule(200); });
   window.addEventListener('online', () => Sync.schedule(200));
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});

@@ -9,7 +9,7 @@ App PWA estática (GitHub Pages) para a coleção de jogos Nintendo do Pedro. Ve
   - tabelas `public.setlist_games`, `public.setlist_prices`, `public.setlist_settings`, `public.setlist_ean` (cache EAN → jogo)
   - schema `setlist_private` (tabela `config` com o segredo do cron)
   - funções `public.setlist_verify_cron`, `public.setlist_touch`
-  - edge functions `setlist-prices` (preços + wishlists Deku) e `setlist-ean` (código de barras → jogo)
+  - edge functions `setlist-prices` (preços + wishlists Deku), `setlist-ean` (código de barras → jogo) e `setlist-covers` (capas oficiais Nintendo Europa)
   - cron job `setlist-prices-daily` (07:13 UTC)
 - As contas de login (auth.users) são partilhadas entre as duas apps.
 - SQL de referência em `supabase/migrations/`, código das edge functions em `supabase/functions/`.
